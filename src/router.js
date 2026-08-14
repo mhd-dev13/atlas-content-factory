@@ -3,10 +3,11 @@
 // ============================================================
 
 import { sendMessage } from "./telegram/api.js";
-import { generateAI } from "./ai/engine.js";
+
 import {
   generateIdea,
-  generatePost
+  generatePost,
+  generateReel
 } from "./content/engine.js";
 
 import { checkContent } from "./content/quality.js";
@@ -17,9 +18,7 @@ import { checkContent } from "./content/quality.js";
 // ============================================================
 
 function getIdeaKey(chatId) {
-
-  return `atlas:content:idea:${chatId}`;
-
+  return `atlas:content:idea:${String(chatId)}`;
 }
 
 
@@ -35,6 +34,7 @@ export async function routeUpdate(update, env) {
   if (!message?.chat?.id) {
     return;
   }
+
 
   const chatId =
     message.chat.id;
@@ -65,9 +65,8 @@ export async function routeUpdate(update, env) {
         "",
         "💡 /idea",
         "📝 /post",
-        "📊 /status",
-        "",
-        "ابتدا /idea را بزن و بعد /post."
+        "🎬 /reel",
+        "📊 /status"
       ].join("\n")
     );
 
@@ -81,6 +80,10 @@ export async function routeUpdate(update, env) {
 
   if (text === "/status") {
 
+    const kv =
+      !!env.ATLAS_KV;
+
+
     await sendMessage(
       env,
       chatId,
@@ -92,7 +95,11 @@ export async function routeUpdate(update, env) {
         "🧠 AI Engine: ACTIVE",
         "🏭 Content Engine: ACTIVE",
         "🛡️ Quality Engine: ACTIVE",
-        "📡 Telegram: CONNECTED"
+        "📡 Telegram: CONNECTED",
+        "",
+        kv
+          ? "💾 KV: CONNECTED"
+          : "🔴 KV: MISSING"
       ].join("\n")
     );
 
@@ -115,49 +122,106 @@ export async function routeUpdate(update, env) {
 
     try {
 
+      // ------------------------------------------------------
+      // KV MUST EXIST
+      // ------------------------------------------------------
+
+      if (!env.ATLAS_KV) {
+
+        throw new Error(
+          "ATLAS_KV_BINDING_MISSING"
+        );
+      }
+
+
+      // ------------------------------------------------------
+      // GENERATE IDEA
+      // ------------------------------------------------------
+
       const idea =
         await generateIdea(env);
 
 
       // ------------------------------------------------------
-      // Save latest idea
+      // SAVE IDEA
       // ------------------------------------------------------
 
-      if (env.ATLAS_KV) {
+      const key =
+        getIdeaKey(chatId);
 
-        await env.ATLAS_KV.put(
-          getIdeaKey(chatId),
-          JSON.stringify({
-            idea,
-            createdAt: Date.now()
-          }),
-          {
-            expirationTtl: 86400
-          }
+
+      const record = {
+
+        idea,
+
+        createdAt:
+          Date.now()
+
+      };
+
+
+      await env.ATLAS_KV.put(
+        key,
+        JSON.stringify(record),
+        {
+          expirationTtl: 86400
+        }
+      );
+
+
+      // ------------------------------------------------------
+      // VERIFY STORAGE
+      // ------------------------------------------------------
+
+      const saved =
+        await env.ATLAS_KV.get(
+          key,
+          "json"
         );
 
+
+      if (!saved?.idea) {
+
+        throw new Error(
+          "ATLAS_KV_SAVE_FAILED"
+        );
       }
 
 
       // ------------------------------------------------------
-      // Format idea
+      // OUTPUT
       // ------------------------------------------------------
 
       const output = [
 
         "💡 ATLAS IDEA",
+
         "",
+
         `🇬🇧 Hook: ${idea.hook_en}`,
+
         "",
+
         `🇮🇷 هوک: ${idea.hook_fa}`,
+
         "",
+
         `🎬 Concept: ${idea.concept}`,
+
         "",
+
         `🎨 Visual: ${idea.visual}`,
+
         "",
+
         `📝 CTA: ${idea.cta}`,
+
         "",
+
         "━━━━━━━━━━━━━━",
+
+        "💾 Idea: SAVED",
+
         "📝 حالا /post را بزن."
 
       ].join("\n");
@@ -181,7 +245,12 @@ export async function routeUpdate(update, env) {
       await sendMessage(
         env,
         chatId,
-        "⚠️ ساخت ایده با مشکل مواجه شد."
+
+        [
+          "⚠️ ساخت ایده با مشکل مواجه شد.",
+          "",
+          `🔧 ${error?.message || "UNKNOWN_ERROR"}`
+        ].join("\n")
       );
 
     }
@@ -207,45 +276,44 @@ export async function routeUpdate(update, env) {
     try {
 
       // ------------------------------------------------------
-      // Load latest idea
+      // KV CHECK
       // ------------------------------------------------------
 
-      let sourceIdea = "";
+      if (!env.ATLAS_KV) {
 
-
-      if (env.ATLAS_KV) {
-
-        const stored =
-          await env.ATLAS_KV.get(
-            getIdeaKey(chatId),
-            "json"
-          );
-
-
-        if (stored?.idea) {
-
-          sourceIdea =
-            JSON.stringify(
-              stored.idea
-            );
-
-        }
-
+        throw new Error(
+          "ATLAS_KV_BINDING_MISSING"
+        );
       }
 
 
       // ------------------------------------------------------
-      // If no idea exists
+      // LOAD IDEA
       // ------------------------------------------------------
 
-      if (!sourceIdea) {
+      const key =
+        getIdeaKey(chatId);
+
+
+      const stored =
+        await env.ATLAS_KV.get(
+          key,
+          "json"
+        );
+
+
+      // ------------------------------------------------------
+      // IDEA NOT FOUND
+      // ------------------------------------------------------
+
+      if (!stored?.idea) {
 
         await sendMessage(
           env,
           chatId,
 
           [
-            "💡 هنوز ایده‌ای ساخته نشده.",
+            "💡 هنوز ایده‌ای ذخیره نشده.",
             "",
             "ابتدا /idea را بزن."
           ].join("\n")
@@ -256,21 +324,23 @@ export async function routeUpdate(update, env) {
 
 
       // ------------------------------------------------------
-      // Generate post
+      // GENERATE POST
       // ------------------------------------------------------
 
       let post =
         await generatePost(
           env,
-          sourceIdea
+          JSON.stringify(
+            stored.idea
+          )
         );
 
 
       // ------------------------------------------------------
-      // Quality check
+      // QUALITY CHECK
       // ------------------------------------------------------
 
-      const quality =
+      let quality =
         await checkContent(
           env,
           post
@@ -284,7 +354,7 @@ export async function routeUpdate(update, env) {
 
 
       // ------------------------------------------------------
-      // First quality failure
+      // QUALITY RETRY
       // ------------------------------------------------------
 
       if (!quality.approved) {
@@ -292,20 +362,22 @@ export async function routeUpdate(update, env) {
         await sendMessage(
           env,
           chatId,
-          "🛡️ کیفیت پست کافی نبود؛ در حال اصلاح..."
+          "🛡️ کیفیت کافی نبود؛ Atlas در حال اصلاح..."
         );
 
 
-        const retryIdea = [
+        const retryInput = [
 
-          sourceIdea,
+          JSON.stringify(
+            stored.idea
+          ),
 
           "",
 
           "QUALITY ISSUES:",
 
           JSON.stringify(
-            quality.issues
+            quality.issues || []
           ),
 
           "",
@@ -313,7 +385,7 @@ export async function routeUpdate(update, env) {
           "SUGGESTED FIXES:",
 
           JSON.stringify(
-            quality.fixes
+            quality.fixes || []
           )
 
         ].join("\n");
@@ -322,15 +394,11 @@ export async function routeUpdate(update, env) {
         post =
           await generatePost(
             env,
-            retryIdea
+            retryInput
           );
 
 
-        // ----------------------------------------------------
-        // Second quality check
-        // ----------------------------------------------------
-
-        const secondQuality =
+        quality =
           await checkContent(
             env,
             post
@@ -339,35 +407,35 @@ export async function routeUpdate(update, env) {
 
         console.log(
           "ATLAS_POST_QUALITY_RETRY:",
-          JSON.stringify(secondQuality)
+          JSON.stringify(quality)
         );
-
-
-        // ----------------------------------------------------
-        // If still bad
-        // ----------------------------------------------------
-
-        if (!secondQuality.approved) {
-
-          await sendMessage(
-            env,
-            chatId,
-
-            [
-              "⚠️ Atlas نتوانست این پست را به کیفیت موردنظر برساند.",
-              "",
-              "دوباره /post را امتحان کن."
-            ].join("\n")
-          );
-
-          return;
-        }
 
       }
 
 
       // ------------------------------------------------------
-      // Send final post
+      // FINAL QUALITY DECISION
+      // ------------------------------------------------------
+
+      if (!quality.approved) {
+
+        await sendMessage(
+          env,
+          chatId,
+
+          [
+            "⚠️ Atlas نتوانست پست را به کیفیت موردنظر برساند.",
+            "",
+            `📊 Score: ${quality.score ?? "N/A"}/100`
+          ].join("\n")
+        );
+
+        return;
+      }
+
+
+      // ------------------------------------------------------
+      // SEND FINAL POST
       // ------------------------------------------------------
 
       await sendMessage(
@@ -392,7 +460,100 @@ export async function routeUpdate(update, env) {
         [
           "⚠️ ساخت پست با مشکل مواجه شد.",
           "",
-          "دوباره /post را امتحان کن."
+          `🔧 ${error?.message || "UNKNOWN_ERROR"}`
+        ].join("\n")
+      );
+
+    }
+
+
+    return;
+  }
+
+
+  // ==========================================================
+  // 🎬 REEL
+  // ==========================================================
+
+  if (text === "/reel") {
+
+    await sendMessage(
+      env,
+      chatId,
+      "🎬 در حال ساخت سناریوی Reel از آخرین ایده..."
+    );
+
+
+    try {
+
+      if (!env.ATLAS_KV) {
+
+        throw new Error(
+          "ATLAS_KV_BINDING_MISSING"
+        );
+      }
+
+
+      const key =
+        getIdeaKey(chatId);
+
+
+      const stored =
+        await env.ATLAS_KV.get(
+          key,
+          "json"
+        );
+
+
+      if (!stored?.idea) {
+
+        await sendMessage(
+          env,
+          chatId,
+
+          [
+            "💡 هنوز ایده‌ای ذخیره نشده.",
+            "",
+            "ابتدا /idea را بزن."
+          ].join("\n")
+        );
+
+        return;
+      }
+
+
+      const reel =
+        await generateReel(
+          env,
+          JSON.stringify(
+            stored.idea
+          )
+        );
+
+
+      await sendMessage(
+        env,
+        chatId,
+        reel
+      );
+
+
+    } catch (error) {
+
+      console.error(
+        "REEL_ERROR:",
+        error?.stack || error
+      );
+
+
+      await sendMessage(
+        env,
+        chatId,
+
+        [
+          "⚠️ ساخت Reel با مشکل مواجه شد.",
+          "",
+          `🔧 ${error?.message || "UNKNOWN_ERROR"}`
         ].join("\n")
       );
 
@@ -414,10 +575,9 @@ export async function routeUpdate(update, env) {
     [
       "🤖 دستور شناخته نشد.",
       "",
-      "دستورات:",
-      "",
       "/idea — ساخت ایده",
       "/post — ساخت پست",
+      "/reel — ساخت سناریوی Reel",
       "/status — وضعیت سیستم"
     ].join("\n")
   );
