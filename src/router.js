@@ -16,6 +16,11 @@ export async function routeUpdate(update, env) {
     return;
   }
 
+
+  // ==========================================================
+  // /START
+  // ==========================================================
+
   if (text === "/start") {
     await sendMessage(
       env,
@@ -23,11 +28,10 @@ export async function routeUpdate(update, env) {
       [
         "🚀 Atlas Content Factory فعال شد!",
         "",
-        "🧠 هسته تولید محتوا آماده است.",
-        "📢 کانال: @AtlasContentFactory",
+        "🧠 موتور تولید محتوا آماده است.",
+        "📢 @AtlasContentFactory",
         "",
-        "دستورهای فعلی:",
-        "/idea — ساخت ایده محتوا",
+        "/idea — ایده محتوا",
         "/status — وضعیت Atlas"
       ].join("\n")
     );
@@ -35,67 +39,122 @@ export async function routeUpdate(update, env) {
     return;
   }
 
+
+  // ==========================================================
+  // /STATUS
+  // ==========================================================
+
   if (text === "/status") {
     await sendMessage(
       env,
       chatId,
-      "🟢 Atlas ONLINE\n🧠 AI: Connected\n📡 Telegram: Connected"
+      [
+        "🟢 ATLAS ONLINE",
+        "🧠 AI: Workers AI",
+        "🤖 Model: Qwen3",
+        "📡 Telegram: Connected"
+      ].join("\n")
     );
 
     return;
   }
 
+
+  // ==========================================================
+  // /IDEA
+  // ==========================================================
+
   if (text === "/idea") {
+
     await sendMessage(
       env,
       chatId,
-      "🧠 دارم یک ایده محتوا می‌سازم..."
+      "🧠 در حال ساخت ایده..."
     );
 
     try {
-      const answer = await generateAI(env, [
-        {
-          role: "system",
-          content: ATLAS_SYSTEM_PROMPT
-        },
-        {
-          role: "user",
-          content: `
-Create one short social-media content idea.
 
-Return:
-1. English hook
-2. Persian hook
-3. Short concept
-4. Suggested visual
-5. CTA
+      const answer = await generateAI(
+        env,
+        [
+          {
+            role: "system",
+            content: ATLAS_SYSTEM_PROMPT
+          },
+          {
+            role: "user",
+            content: `
+Create ONE short Instagram content idea.
+
+IMPORTANT:
+- Return ONLY the final answer.
+- Do NOT show reasoning.
+- Do NOT explain your thinking.
+- Do NOT use <think>.
+- Do NOT write "Okay".
+- Do NOT write "The user wants".
+- Do NOT write "Answer:".
+- No medical claims.
+- No guaranteed results.
+
+Target audience:
+English + Persian.
+
+Return EXACTLY:
+
+💡 IDEA
+
+🇬🇧 Hook:
+[short English hook]
+
+🇮🇷 هوک:
+[short Persian hook]
+
+🎬 Concept:
+[one short sentence]
+
+🎨 Visual:
+[one short sentence]
+
+📝 CTA:
+[short CTA]
 
 Topic:
-calmness / relaxation / ASMR / anxiety relief.
+calmness / relaxation / ASMR / peaceful content.
 
-Do not make medical claims.
-          `.trim()
-        }
-      ]);
+Maximum 80 words.
+            `.trim()
+          }
+        ]
+      );
 
       await sendMessage(
         env,
         chatId,
-        `💡 ATLAS CONTENT IDEA\n\n${answer}`
+        answer
       );
 
     } catch (error) {
-      console.error("IDEA_ERROR:", error);
+
+      console.error(
+        "IDEA_ERROR:",
+        error?.stack || error
+      );
 
       await sendMessage(
         env,
         chatId,
-        "⚠️ اتصال به موتور AI با مشکل مواجه شد."
+        "⚠️ موتور AI فعلاً در دسترس نیست."
       );
     }
 
     return;
   }
+
+
+  // ==========================================================
+  // UNKNOWN COMMAND
+  // ==========================================================
 
   await sendMessage(
     env,
