@@ -1,7 +1,7 @@
 // ============================================================
 // 🎬 ATLAS VIDEO RENDERER
-// Motion Engine + Hook Text Overlay
-// FFmpeg Micro Compatible
+// Minimal Cinematic Reel Engine
+// Image + Text + Grain + Slow Zoom
 // ============================================================
 
 const BASE_URL =
@@ -35,7 +35,6 @@ function authHeaders(env) {
 
   }
 
-
   return {
 
     "Authorization":
@@ -50,54 +49,112 @@ function authHeaders(env) {
 
 
 // ============================================================
-// 🧹 TEXT SANITIZER
+// 🧹 ESCAPE FFMPEG TEXT
 // ============================================================
 
-function sanitizeText(text) {
+function escapeDrawText(text) {
 
-  if (
-    text === undefined ||
-    text === null
+  return String(text || "")
+
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'")
+    .replace(/,/g, "\\,")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]");
+
+}
+
+
+// ============================================================
+// 📝 SMART TEXT WRAP
+// ============================================================
+
+function wrapText(
+  text,
+  maxChars = 24
+) {
+
+  const clean =
+    String(text || "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+
+  if (!clean) {
+    return "";
+  }
+
+
+  // ----------------------------------------------------------
+  // Existing line breaks
+  // ----------------------------------------------------------
+
+  const paragraphs =
+    clean.split(/\n+/);
+
+
+  const lines = [];
+
+
+  for (
+    const paragraph of paragraphs
   ) {
 
-    return "";
+    const words =
+      paragraph
+        .split(" ")
+        .filter(Boolean);
+
+
+    let current = "";
+
+
+    for (
+      const word of words
+    ) {
+
+      const candidate =
+        current
+          ? `${current} ${word}`
+          : word;
+
+
+      if (
+        candidate.length >
+          maxChars &&
+        current
+      ) {
+
+        lines.push(
+          current
+        );
+
+        current =
+          word;
+
+      } else {
+
+        current =
+          candidate;
+
+      }
+
+    }
+
+
+    if (current) {
+
+      lines.push(
+        current
+      );
+
+    }
 
   }
 
 
-  return String(text)
-
-    .replace(
-      /\r?\n/g,
-      " "
-    )
-
-    .replace(
-      /\\/g,
-      "\\\\"
-    )
-
-    .replace(
-      /'/g,
-      "\\'"
-    )
-
-    .replace(
-      /:/g,
-      "\\:"
-    )
-
-    .replace(
-      /,/g,
-      "\\,"
-    )
-
-    .replace(
-      /%/g,
-      "\\%"
-    )
-
-    .trim();
+  return lines.join("\n");
 
 }
 
@@ -142,8 +199,7 @@ async function uploadImage(
       `${BASE_URL}/v1/upload/presigned-url`,
       {
 
-        method:
-          "POST",
+        method: "POST",
 
         headers:
           authHeaders(env),
@@ -175,7 +231,6 @@ async function uploadImage(
       data
     );
 
-
     throw new Error(
       `FFMPEG_UPLOAD_URL_FAILED:${JSON.stringify(data)}`
     );
@@ -185,7 +240,6 @@ async function uploadImage(
 
   const uploadUrl =
     data?.result?.uploadUrl;
-
 
   const serverFilename =
     data?.result?.filename;
@@ -203,17 +257,12 @@ async function uploadImage(
   }
 
 
-  // ----------------------------------------------------------
-  // Upload binary
-  // ----------------------------------------------------------
-
   const uploadResponse =
     await fetch(
       uploadUrl,
       {
 
-        method:
-          "PUT",
+        method: "PUT",
 
         headers: {
 
@@ -234,12 +283,10 @@ async function uploadImage(
     const errorText =
       await uploadResponse.text();
 
-
     console.error(
       "ATLAS_IMAGE_UPLOAD_ERROR:",
       errorText
     );
-
 
     throw new Error(
       `FFMPEG_IMAGE_UPLOAD_FAILED:${uploadResponse.status}`
@@ -248,17 +295,12 @@ async function uploadImage(
   }
 
 
-  // ----------------------------------------------------------
-  // Confirm upload
-  // ----------------------------------------------------------
-
   const confirmResponse =
     await fetch(
       `${BASE_URL}/v1/upload/confirm`,
       {
 
-        method:
-          "POST",
+        method: "POST",
 
         headers:
           authHeaders(env),
@@ -288,11 +330,8 @@ async function uploadImage(
       confirmData
     );
 
-
     throw new Error(
-      `FFMPEG_UPLOAD_CONFIRM_FAILED:${JSON.stringify(
-        confirmData
-      )}`
+      `FFMPEG_UPLOAD_CONFIRM_FAILED:${JSON.stringify(confirmData)}`
     );
 
   }
@@ -326,149 +365,6 @@ async function uploadImage(
 
 
 // ============================================================
-// 🎨 BUILD VIDEO FILTER
-// ============================================================
-
-function buildVideoFilter(
-  motion,
-  hook
-) {
-
-  let motionFilter;
-
-
-  // ==========================================================
-  // 🔍 MOTION
-  // ==========================================================
-
-  switch (motion) {
-
-    case "zoom_in":
-
-      motionFilter =
-
-        "scale=1200:2133:"
-        +
-
-        "force_original_aspect_ratio=increase,"
-        +
-
-        "crop=1200:2133,"
-        +
-
-        "zoompan="
-        +
-
-        "z='min(zoom+0.0015,1.12)':"
-        +
-
-        "d=300:"
-        +
-
-        "x='iw/2-(iw/zoom/2)':"
-        +
-
-        "y='ih/2-(ih/zoom/2)':"
-        +
-
-        "s=1080x1920:"
-        +
-
-        "fps=30";
-
-      break;
-
-
-    default:
-
-      motionFilter =
-
-        "scale=1080:1920:"
-        +
-
-        "force_original_aspect_ratio=increase,"
-        +
-
-        "crop=1080:1920";
-
-  }
-
-
-  // ==========================================================
-  // 📝 HOOK
-  // ==========================================================
-
-  const safeHook =
-    sanitizeText(
-      hook
-    );
-
-
-  if (!safeHook) {
-
-    return motionFilter;
-
-  }
-
-
-  /*
-   * IMPORTANT:
-   *
-   * Text is added AFTER zoompan.
-   *
-   * Image:
-   *     ↓
-   * Motion
-   *     ↓
-   * Hook
-   *
-   * Therefore the Hook stays stable.
-   */
-
-
-  const textFilter =
-
-    "drawtext=" +
-
-    "font='DejaVu Sans Bold':" +
-
-    `text='${safeHook}':` +
-
-    "fontcolor=white:" +
-
-    "fontsize=64:" +
-
-    "x=(w-text_w)/2:" +
-
-    "y=h*0.16:" +
-
-    "box=1:" +
-
-    "boxcolor=black@0.48:" +
-
-    "boxborderw=22:" +
-
-    "shadowcolor=black@0.8:" +
-
-    "shadowx=3:" +
-
-    "shadowy=3";
-
-
-  return (
-
-    motionFilter +
-
-    "," +
-
-    textFilter
-
-  );
-
-}
-
-
-// ============================================================
 // 🎥 CREATE VIDEO JOB
 // ============================================================
 
@@ -477,14 +373,106 @@ async function createVideoJob(
   fileUrl,
   duration,
   motion = "zoom_in",
-  hook = ""
+  overlayText = ""
 ) {
 
-  const videoFilter =
-    buildVideoFilter(
-      motion,
-      hook
-    );
+  // ----------------------------------------------------------
+  // 🎨 Base motion
+  // ----------------------------------------------------------
+
+  let videoFilter;
+
+
+  switch (motion) {
+
+    case "zoom_in":
+
+      videoFilter =
+        "scale=1200:2133:force_original_aspect_ratio=increase,"
+        + "crop=1200:2133,"
+        + "zoompan="
+        + "z='min(zoom+0.0015,1.12)':"
+        + "d=300:"
+        + "x='iw/2-(iw/zoom/2)':"
+        + "y='ih/2-(ih/zoom/2)':"
+        + "s=1080x1920:"
+        + "fps=30";
+
+      break;
+
+
+    default:
+
+      videoFilter =
+        "scale=1080:1920:force_original_aspect_ratio=increase,"
+        + "crop=1080:1920";
+
+  }
+
+
+  // ----------------------------------------------------------
+  // 📝 TEXT OVERLAY
+  // ----------------------------------------------------------
+
+  if (
+    overlayText &&
+    String(overlayText).trim()
+  ) {
+
+    const wrappedText =
+      wrapText(
+        overlayText,
+        24
+      );
+
+
+    const safeText =
+      escapeDrawText(
+        wrappedText
+      );
+
+
+    videoFilter +=
+
+      ",drawtext=" +
+
+      "font='DejaVu Sans':" +
+
+      `text='${safeText}':` +
+
+      "fontcolor=white:" +
+
+      "fontsize=64:" +
+
+      "x=(w-text_w)/2:" +
+
+      "y=(h-text_h)/2:" +
+
+      "line_spacing=14:" +
+
+      "text_shaping=1:" +
+
+      "box=1:" +
+
+      "boxcolor=black@0.28:" +
+
+      "boxborderw=28:" +
+
+      "shadowcolor=black@0.75:" +
+
+      "shadowx=3:" +
+
+      "shadowy=3";
+
+  }
+
+
+  // ----------------------------------------------------------
+  // 🌫️ SUBTLE GRAIN
+  // ----------------------------------------------------------
+
+  videoFilter +=
+    ",noise=alls=5:allf=t+u";
 
 
   console.log(
@@ -494,8 +482,8 @@ async function createVideoJob(
 
 
   console.log(
-    "ATLAS_HOOK:",
-    hook || "(none)"
+    "ATLAS_OVERLAY_TEXT:",
+    overlayText
   );
 
 
@@ -510,8 +498,7 @@ async function createVideoJob(
       `${BASE_URL}/v1/transcodes`,
       {
 
-        method:
-          "POST",
+        method: "POST",
 
         headers:
           authHeaders(env),
@@ -648,7 +635,6 @@ async function createVideoJob(
       data
     );
 
-
     throw new Error(
       `FFMPEG_TRANSCODE_FAILED:${JSON.stringify(data)}`
     );
@@ -667,7 +653,6 @@ async function createVideoJob(
       "ATLAS_TRANSCODE_INVALID:",
       data
     );
-
 
     throw new Error(
       "FFMPEG_JOB_ID_MISSING"
@@ -700,9 +685,7 @@ async function waitForVideo(
     attempt++
   ) {
 
-    await sleep(
-      2000
-    );
+    await sleep(2000);
 
 
     const response =
@@ -736,8 +719,7 @@ async function waitForVideo(
 
     const status =
       String(
-        data?.status ||
-        ""
+        data?.status || ""
       ).toLowerCase();
 
 
@@ -748,8 +730,7 @@ async function waitForVideo(
 
 
     if (
-      status ===
-      "completed"
+      status === "completed"
     ) {
 
       return data;
@@ -780,7 +761,7 @@ async function waitForVideo(
 
 
 // ============================================================
-// 📥 GET DOWNLOAD URL
+// 📥 DOWNLOAD URL
 // ============================================================
 
 async function getDownloadUrl(
@@ -852,8 +833,7 @@ export async function renderImageToVideo(
       Math.min(
         30,
         Number(
-          options.duration ||
-          10
+          options.duration || 10
         )
       )
     );
@@ -864,9 +844,11 @@ export async function renderImageToVideo(
     "zoom_in";
 
 
-  const hook =
-    options.hook ||
-    "";
+  const overlayText =
+    String(
+      options.overlayText ||
+      ""
+    ).trim();
 
 
   console.log(
@@ -877,7 +859,7 @@ export async function renderImageToVideo(
 
       motion,
 
-      hook,
+      overlayText,
 
       bytes:
         imageBuffer?.byteLength
@@ -903,17 +885,11 @@ export async function renderImageToVideo(
 
   const jobId =
     await createVideoJob(
-
       env,
-
       uploaded.fileUrl,
-
       duration,
-
       motion,
-
-      hook
-
+      overlayText
     );
 
 
@@ -946,7 +922,7 @@ export async function renderImageToVideo(
 
       motion,
 
-      hook,
+      overlayText,
 
       videoUrl
 
@@ -964,7 +940,7 @@ export async function renderImageToVideo(
 
     motion,
 
-    hook
+    overlayText
 
   };
 
