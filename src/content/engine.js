@@ -42,9 +42,8 @@ Avoid exaggerated claims.
 
 PERSIAN:
 
-Write in natural modern Persian.
+Write natural modern Persian.
 
-IMPORTANT:
 Do NOT translate the English sentence word-by-word.
 
 The Persian must be independently written
@@ -278,7 +277,7 @@ Return JSON only.
 
 
 // ============================================================
-// 🎬 GENERATE REEL
+// 🎬 GENERATE REEL 2.0
 // ============================================================
 
 export async function generateReel(
@@ -297,74 +296,160 @@ export async function generateReel(
       role: "system",
 
       content: `
-You are Atlas Content Factory Reel Director.
+You are Atlas Reel Director.
 
 ${CONTENT_RULES}
 
-Create ONE short Instagram Reel concept
-based specifically on the supplied idea.
+Create ONE production-ready Instagram Reel
+for a calmness, relaxation, ASMR and peaceful-content page.
 
-The Reel should be easy to produce
-using AI video generation tools.
+The Reel must be practical for AI video generation.
 
-Return ONLY valid JSON.
+IMPORTANT:
 
-JSON structure:
+Return ONLY one valid JSON object.
+
+No markdown.
+No reasoning.
+No <think>.
+No explanation.
+No multiple versions.
+
+The Reel must have exactly 3 visual scenes.
+
+Each scene must describe:
+
+- visual
+- camera
+- motion
+- duration
+
+The total duration must be approximately
+15, 30 or 60 seconds.
+
+Do not make medical claims.
+Do not claim treatment.
+Do not guarantee results.
+
+PERSIAN:
+
+Write natural modern Persian.
+
+Do NOT translate English literally.
+
+Avoid robotic Persian.
+
+Avoid expressions such as:
+
+"به آرامش بپردازید"
+"ذهن خود را آزاد کنید"
+"خود را رها کنید"
+"آرامش خود را پیدا کنید"
+"صدای آرامش بخش به شما کمک می‌کند"
+
+Prefer natural Instagram-style Persian.
+
+Example style:
+
+"چشم‌هات رو ببند و چند لحظه فقط به صدای بارون گوش بده."
+
+"بذار این چند لحظه از شلوغی روز جدا باشه."
+
+"فقط مکث کن و به صدای طبیعت گوش بده."
+
+JSON STRUCTURE:
 
 {
   "title": "",
   "hook": "",
-  "duration": "",
-  "visuals": [],
-  "audio": "",
-  "voiceover_en": "",
-  "voiceover_fa": "",
-  "on_screen_text_en": "",
-  "on_screen_text_fa": "",
-  "cta": ""
+  "duration": "30s",
+
+  "scenes": [
+    {
+      "duration": "10s",
+      "visual": "",
+      "camera": "",
+      "motion": ""
+    },
+    {
+      "duration": "10s",
+      "visual": "",
+      "camera": "",
+      "motion": ""
+    },
+    {
+      "duration": "10s",
+      "visual": "",
+      "camera": "",
+      "motion": ""
+    }
+  ],
+
+  "audio": {
+    "ambient": "",
+    "effects": ""
+  },
+
+  "voiceover": {
+    "en": "",
+    "fa": ""
+  },
+
+  "on_screen_text": {
+    "en": "",
+    "fa": ""
+  },
+
+  "cta": "",
+
+  "caption_en": "",
+  "caption_fa": "",
+
+  "hashtags": []
 }
 
 RULES:
 
 title:
-Short Reel title.
+Maximum 6 words.
 
 hook:
-Short attention-grabbing opening.
+Maximum 12 words.
 
-duration:
-Use 15s, 30s or 60s.
+scene visual:
+Describe only what should appear visually.
 
-visuals:
-Exactly 3 short visual scenes.
+camera:
+Specify shot type or camera movement.
+
+motion:
+Describe subtle natural movement.
 
 audio:
-Describe the ASMR or ambient audio.
+Describe realistic ambient sound.
 
-voiceover_en:
-Short natural English voiceover.
-Maximum 25 words.
+voiceover:
+Maximum 25 words per language.
 
-voiceover_fa:
-Natural Persian voiceover.
-Maximum 30 words.
-Do not translate literally.
-
-on_screen_text_en:
-Very short English text.
-
-on_screen_text_fa:
-Natural Persian text.
+on_screen_text:
+Maximum 8 words per language.
 
 cta:
-Short CTA.
+Maximum 12 words.
 
-No medical claims.
-No treatment claims.
-No guarantees.
-No markdown.
-No reasoning.
-No <think>.
+caption:
+Maximum 30 words per language.
+
+hashtags:
+5 to 8 relevant hashtags.
+
+Do not put audio descriptions inside scenes.
+
+Do not put camera instructions inside visual descriptions.
+
+Do not put voiceover inside captions.
+
+Make every scene visually different.
       `.trim()
     },
 
@@ -372,9 +457,12 @@ No <think>.
       role: "user",
 
       content: `
-Create one Reel based specifically on this idea:
+Create ONE production-ready Reel based specifically
+on this idea:
 
 ${idea}
+
+Keep the original topic and mood.
 
 Return JSON only.
       `.trim()
@@ -395,6 +483,11 @@ Return JSON only.
       raw,
       "REEL"
     );
+
+
+  validateReel(
+    reel
+  );
 
 
   return formatReel(
@@ -496,7 +589,9 @@ function extractJSON(
 
 
     if (char === "{") {
+
       depth++;
+
     }
 
 
@@ -525,9 +620,13 @@ function extractJSON(
           throw new Error(
             `${type}_JSON_INVALID`
           );
+
         }
+
       }
+
     }
+
   }
 
 
@@ -538,7 +637,7 @@ function extractJSON(
 
 
 // ============================================================
-// 🧹 CLEAN RAW
+// 🧹 CLEAN RAW AI OUTPUT
 // ============================================================
 
 function cleanRaw(text) {
@@ -601,6 +700,7 @@ function validatePost(post) {
         `POST_FIELD_MISSING:${field}`
       );
     }
+
   }
 
 
@@ -611,7 +711,212 @@ function validatePost(post) {
   ) {
 
     post.hashtags = [];
+
   }
+}
+
+
+// ============================================================
+// 🛡️ VALIDATE REEL
+// ============================================================
+
+function validateReel(reel) {
+
+  if (
+    !reel ||
+    typeof reel !== "object"
+  ) {
+
+    throw new Error(
+      "REEL_INVALID"
+    );
+  }
+
+
+  const required = [
+
+    "title",
+    "hook",
+    "duration",
+    "scenes",
+    "audio",
+    "voiceover",
+    "on_screen_text",
+    "cta"
+
+  ];
+
+
+  for (
+    const field of required
+  ) {
+
+    if (
+      reel[field] === undefined ||
+      reel[field] === null
+    ) {
+
+      throw new Error(
+        `REEL_FIELD_MISSING:${field}`
+      );
+    }
+
+  }
+
+
+  if (
+    !Array.isArray(
+      reel.scenes
+    )
+  ) {
+
+    throw new Error(
+      "REEL_SCENES_INVALID"
+    );
+  }
+
+
+  if (
+    reel.scenes.length !== 3
+  ) {
+
+    throw new Error(
+      "REEL_SCENES_COUNT_INVALID"
+    );
+  }
+
+
+  for (
+    const scene of reel.scenes
+  ) {
+
+    if (
+      !scene.visual ||
+      !scene.camera ||
+      !scene.motion ||
+      !scene.duration
+    ) {
+
+      throw new Error(
+        "REEL_SCENE_INCOMPLETE"
+      );
+    }
+
+  }
+
+
+  if (
+    !reel.audio ||
+    typeof reel.audio !== "object"
+  ) {
+
+    reel.audio = {};
+
+  }
+
+
+  if (
+    !reel.audio.ambient
+  ) {
+
+    reel.audio.ambient = "";
+
+  }
+
+
+  if (
+    !reel.audio.effects
+  ) {
+
+    reel.audio.effects = "";
+
+  }
+
+
+  if (
+    !reel.voiceover ||
+    typeof reel.voiceover !== "object"
+  ) {
+
+    reel.voiceover = {};
+
+  }
+
+
+  if (
+    !reel.voiceover.en
+  ) {
+
+    reel.voiceover.en = "";
+
+  }
+
+
+  if (
+    !reel.voiceover.fa
+  ) {
+
+    reel.voiceover.fa = "";
+
+  }
+
+
+  if (
+    !reel.on_screen_text ||
+    typeof reel.on_screen_text !== "object"
+  ) {
+
+    reel.on_screen_text = {};
+
+  }
+
+
+  if (
+    !reel.on_screen_text.en
+  ) {
+
+    reel.on_screen_text.en = "";
+
+  }
+
+
+  if (
+    !reel.on_screen_text.fa
+  ) {
+
+    reel.on_screen_text.fa = "";
+
+  }
+
+
+  if (
+    !Array.isArray(
+      reel.hashtags
+    )
+  ) {
+
+    reel.hashtags = [];
+
+  }
+
+
+  if (
+    typeof reel.caption_en !== "string"
+  ) {
+
+    reel.caption_en = "";
+
+  }
+
+
+  if (
+    typeof reel.caption_fa !== "string"
+  ) {
+
+    reel.caption_fa = "";
+
+  }
+
 }
 
 
@@ -639,6 +944,7 @@ function formatPost(post) {
 
             value =
               "#" + value;
+
           }
 
 
@@ -689,67 +995,128 @@ function formatPost(post) {
 
 
 // ============================================================
-// 🎬 FORMAT REEL
+// 🎬 FORMAT REEL 2.0
 // ============================================================
 
 function formatReel(reel) {
 
-  const visuals =
-    Array.isArray(reel.visuals)
-      ? reel.visuals
-          .map(
-            (item, index) =>
-              `${index + 1}. ${String(item).trim()}`
-          )
-          .join("\n")
-      : "";
+  const scenes =
+    reel.scenes
+
+      .map(
+        (scene, index) => {
+
+          return [
+
+            `🎥 SCENE ${index + 1}`,
+
+            `⏱ Duration: ${scene.duration}`,
+
+            `👁 Visual: ${scene.visual}`,
+
+            `📷 Camera: ${scene.camera}`,
+
+            `🎞 Motion: ${scene.motion}`
+
+          ].join("\n");
+
+        }
+      )
+
+      .join("\n\n");
+
+
+  const hashtags =
+    reel.hashtags
+
+      .map(
+        tag => {
+
+          let value =
+            String(tag || "")
+              .trim();
+
+
+          if (
+            value &&
+            !value.startsWith("#")
+          ) {
+
+            value =
+              "#" + value;
+
+          }
+
+
+          return value;
+
+        }
+      )
+
+      .filter(Boolean)
+
+      .slice(0, 8)
+
+      .join(" ");
 
 
   return [
 
-    "🎬 ATLAS REEL",
+    "🎬 ATLAS REEL 2.0",
 
     "",
 
-    `🎯 Title: ${reel.title || ""}`,
+    `🎯 Title: ${reel.title}`,
 
-    `⚡ Hook: ${reel.hook || ""}`,
+    `⚡ Hook: ${reel.hook}`,
 
-    `⏱ Duration: ${reel.duration || ""}`,
-
-    "",
-
-    "🎥 VISUALS",
-
-    visuals,
+    `⏱ Duration: ${reel.duration}`,
 
     "",
 
-    `🔊 Audio: ${reel.audio || ""}`,
+    scenes,
 
     "",
 
-    "🇬🇧 VOICEOVER",
+    "🔊 AUDIO",
 
-    reel.voiceover_en || "",
+    `🌧 Ambient: ${reel.audio.ambient}`,
+
+    `✨ Effects: ${reel.audio.effects}`,
 
     "",
 
-    "🇮🇷 VOICEOVER فارسی",
+    "🎙 VOICEOVER",
 
-    reel.voiceover_fa || "",
+    `🇬🇧 ${reel.voiceover.en}`,
+
+    `🇮🇷 ${reel.voiceover.fa}`,
 
     "",
 
     "🖥 ON-SCREEN TEXT",
 
-    `EN: ${reel.on_screen_text_en || ""}`,
+    `🇬🇧 ${reel.on_screen_text.en}`,
 
-    `FA: ${reel.on_screen_text_fa || ""}`,
+    `🇮🇷 ${reel.on_screen_text.fa}`,
 
     "",
 
-    `📝 CTA: ${reel.cta || ""}`
+    `📝 CTA: ${reel.cta}`,
+
+    "",
+
+    "📦 CAPTION",
+
+    `🇬🇧 ${reel.caption_en}`,
+
+    `🇮🇷 ${reel.caption_fa}`,
+
+    "",
+
+    "🔖 HASHTAGS",
+
+    hashtags
 
   ].join("\n");
 }
