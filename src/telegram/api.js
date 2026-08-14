@@ -1,10 +1,5 @@
 // ============================================================
-// 🤖 ATLAS TELEGRAM API
-// ============================================================
-
-
-// ============================================================
-// 📡 TELEGRAM REQUEST
+// 📡 ATLAS TELEGRAM API
 // ============================================================
 
 export async function telegram(
@@ -14,9 +9,11 @@ export async function telegram(
 ) {
 
   if (!env.TELEGRAM_BOT_TOKEN) {
+
     throw new Error(
       "TELEGRAM_BOT_TOKEN is missing"
     );
+
   }
 
 
@@ -48,13 +45,16 @@ export async function telegram(
   if (!data.ok) {
 
     throw new Error(
-      `Telegram API error: ${JSON.stringify(data)}`
+      `Telegram API error: ${JSON.stringify(
+        data
+      )}`
     );
 
   }
 
 
   return data.result;
+
 }
 
 
@@ -72,8 +72,10 @@ export async function sendMessage(
     env,
     "sendMessage",
     {
-      chat_id: chatId,
-      text: String(text || "")
+      chat_id:
+        chatId,
+
+      text
     }
   );
 
@@ -81,150 +83,41 @@ export async function sendMessage(
 
 
 // ============================================================
-// 🖼️ SEND PHOTO
+// 🎬 SEND VIDEO
 // ============================================================
 
-export async function sendPhoto(
+export async function sendVideo(
   env,
   chatId,
-  imageData,
+  videoUrl,
   caption = ""
 ) {
 
-  if (!imageData) {
+  if (!videoUrl) {
 
     throw new Error(
-      "TELEGRAM_IMAGE_MISSING"
+      "VIDEO_URL_MISSING"
     );
 
   }
 
 
-  let imageBuffer;
+  return telegram(
+    env,
+    "sendVideo",
+    {
+      chat_id:
+        chatId,
 
+      video:
+        videoUrl,
 
-  // ----------------------------------------------------------
-  // ArrayBuffer
-  // ----------------------------------------------------------
+      caption:
+        caption,
 
-  if (
-    imageData instanceof ArrayBuffer
-  ) {
-
-    imageBuffer =
-      imageData;
-
-  }
-
-
-  // ----------------------------------------------------------
-  // Uint8Array
-  // ----------------------------------------------------------
-
-  else if (
-    imageData instanceof Uint8Array
-  ) {
-
-    imageBuffer =
-      imageData.buffer.slice(
-        imageData.byteOffset,
-        imageData.byteOffset +
-        imageData.byteLength
-      );
-
-  }
-
-
-  // ----------------------------------------------------------
-  // ReadableStream
-  // ----------------------------------------------------------
-
-  else if (
-    imageData instanceof ReadableStream
-  ) {
-
-    imageBuffer =
-      await new Response(
-        imageData
-      ).arrayBuffer();
-
-  }
-
-
-  else {
-
-    throw new Error(
-      "TELEGRAM_IMAGE_INVALID_TYPE"
-    );
-
-  }
-
-
-  const blob =
-    new Blob(
-      [imageBuffer],
-      {
-        type: "image/png"
-      }
-    );
-
-
-  const form =
-    new FormData();
-
-
-  form.append(
-    "chat_id",
-    String(chatId)
+      supports_streaming:
+        true
+    }
   );
 
-
-  form.append(
-    "photo",
-    blob,
-    "atlas-image.png"
-  );
-
-
-  if (
-    caption &&
-    String(caption).trim()
-  ) {
-
-    form.append(
-      "caption",
-      String(caption)
-    );
-
-  }
-
-
-  const url =
-    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`;
-
-
-  const response =
-    await fetch(
-      url,
-      {
-        method: "POST",
-        body: form
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (!data.ok) {
-
-    throw new Error(
-      `Telegram sendPhoto error: ${JSON.stringify(data)}`
-    );
-
-  }
-
-
-  return data.result;
 }
