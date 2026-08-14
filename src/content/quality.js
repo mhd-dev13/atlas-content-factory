@@ -19,8 +19,7 @@ export async function checkContent(env, post) {
       content: `
 You are Atlas Content Quality Controller.
 
-Your job is to check social media content
-before it is published.
+Check ONE social media post.
 
 Check:
 
@@ -39,20 +38,34 @@ Check:
 13. No reasoning
 14. No markdown
 
-Return ONLY valid JSON.
+IMPORTANT:
 
-Use exactly:
+Return ONLY one JSON object.
+
+Do not write anything before JSON.
+Do not write anything after JSON.
+Do not use markdown.
+Do not use code fences.
+Do not use <think>.
+
+EXACT JSON STRUCTURE:
 
 {
   "approved": true,
-  "score": 0,
+  "score": 85,
   "issues": [],
   "fixes": []
 }
 
-Score from 0 to 100.
+Rules:
 
-Approve only if score >= 80.
+score must be an integer from 0 to 100.
+
+issues must be an array of short strings.
+
+fixes must be an array of short strings.
+
+approved must be true only when score >= 80.
       `.trim()
     },
 
@@ -60,11 +73,11 @@ Approve only if score >= 80.
       role: "user",
 
       content: `
-Check this post:
+Evaluate this post:
 
-${JSON.stringify(post)}
+${String(post || "")}
 
-Return JSON only.
+Return ONLY JSON.
       `.trim()
     }
 
@@ -78,80 +91,134 @@ Return JSON only.
     );
 
 
+  console.log(
+    "ATLAS_QUALITY_RAW:",
+    String(raw || "")
+  );
+
+
   const result =
-    extractQualityJSON(raw);
+    parseQualityResult(raw);
 
 
-  if (
-    typeof result.score !== "number"
-  ) {
+  // ==========================================================
+  // 🧹 NORMALIZE RESULT
+  // ==========================================================
 
-    result.score = 0;
+  let score =
+    Number(result.score);
+
+
+  if (!Number.isFinite(score)) {
+    score = 0;
   }
 
 
-  if (
-    !Array.isArray(result.issues)
-  ) {
-
-    result.issues = [];
-  }
-
-
-  if (
-    !Array.isArray(result.fixes)
-  ) {
-
-    result.fixes = [];
-  }
+  score =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(score)
+      )
+    );
 
 
-  result.approved =
-    result.score >= 80;
+  const issues =
+    Array.isArray(result.issues)
+      ? result.issues
+          .map(
+            item =>
+              String(item || "").trim()
+          )
+          .filter(Boolean)
+      : [];
+
+
+  const fixes =
+    Array.isArray(result.fixes)
+      ? result.fixes
+          .map(
+            item =>
+              String(item || "").trim()
+          )
+          .filter(Boolean)
+      : [];
+
+
+  const approved =
+    score >= 80;
+
+
+  const finalResult = {
+
+    approved,
+
+    score,
+
+    issues,
+
+    fixes
+
+  };
 
 
   console.log(
     "ATLAS_QUALITY:",
-    JSON.stringify(result)
+    JSON.stringify(finalResult)
   );
 
 
-  return result;
+  return finalResult;
 }
 
 
 // ============================================================
-// 🧠 EXTRACT JSON
+// 🧠 PARSE QUALITY RESULT
 // ============================================================
 
-function extractQualityJSON(text) {
+function parseQualityResult(text) {
 
   const cleaned =
-    String(text || "")
-      .replace(
-        /<think>[\s\S]*?<\/think>/gi,
-        ""
-      )
-      .replace(
-        /<\/think>/gi,
-        ""
-      )
-      .trim();
+    cleanAIOutput(text);
 
 
-  const start =
-    cleaned.indexOf("{");
+  // ----------------------------------------------------------
+  // DIRECT JSON
+  // ----------------------------------------------------------
+
+  try {
+
+    const direct =
+      JSON.parse(cleaned);
 
 
-  const end =
-    cleaned.lastIndexOf("}");
+    return normalizeRawResult(
+      direct
+    );
+
+  } catch {
+    // Continue to extraction.
+  }
 
 
-  if (
-    start === -1 ||
-    end === -1 ||
-    end <= start
-  ) {
+  // ----------------------------------------------------------
+  // EXTRACT JSON OBJECT
+  // ----------------------------------------------------------
+
+  const object =
+    extractJSONObject(
+      cleaned
+    );
+
+
+  if (!object) {
+
+    console.error(
+      "QUALITY_JSON_NOT_FOUND:",
+      cleaned
+    );
+
 
     throw new Error(
       "QUALITY_JSON_NOT_FOUND"
@@ -159,28 +226,250 @@ function extractQualityJSON(text) {
   }
 
 
-  const jsonText =
-    cleaned.slice(
-      start,
-      end + 1
-    );
-
-
   try {
 
-    return JSON.parse(
-      jsonText
+    return normalizeRawResult(
+      JSON.parse(object)
     );
 
   } catch (error) {
 
     console.error(
-      "QUALITY_JSON_ERROR:",
-      jsonText
+      "QUALITY_JSON_INVALID:",
+      object
     );
+
+
+    // --------------------------------------------------------
+    // LAST RESORT: TRY REPAIR
+    // --------------------------------------------------------
+
+    const repaired =
+      repairJSON(object);
+
+
+    try {
+
+      return normalizeRawResult(
+        JSON.parse(repaired)
+      );
+
+    } catch {
+
+      throw new Error(
+        "QUALITY_JSON_INVALID"
+      );
+    }
+  }
+}
+
+
+// ============================================================
+// 🧹 CLEAN AI OUTPUT
+// ============================================================
+
+function cleanAIOutput(text) {
+
+  return String(text || "")
+
+    // Remove reasoning blocks.
+    .replace(
+      /<think>[\s\S]*?<\/think>/gi,
+      ""
+    )
+
+    .replace(
+      /<think>[\s\S]*/gi,
+      ""
+    )
+
+    .replace(
+      /<\/think>/gi,
+      ""
+    )
+
+    // Remove markdown code fences.
+    .replace(
+      /```json/gi,
+      ""
+    )
+
+    .replace(
+      /```/g,
+      ""
+    )
+
+    .trim();
+}
+
+
+// ============================================================
+// 📦 EXTRACT FIRST COMPLETE JSON OBJECT
+// ============================================================
+
+function extractJSONObject(text) {
+
+  const start =
+    text.indexOf("{");
+
+
+  if (start === -1) {
+    return null;
+  }
+
+
+  let depth = 0;
+
+  let inString = false;
+
+  let escaped = false;
+
+
+  for (
+    let i = start;
+    i < text.length;
+    i++
+  ) {
+
+    const char =
+      text[i];
+
+
+    // --------------------------------------------------------
+    // STRING ESCAPE
+    // --------------------------------------------------------
+
+    if (
+      char === "\\" &&
+      !escaped
+    ) {
+
+      escaped = true;
+
+      continue;
+    }
+
+
+    // --------------------------------------------------------
+    // STRING
+    // --------------------------------------------------------
+
+    if (
+      char === '"' &&
+      !escaped
+    ) {
+
+      inString =
+        !inString;
+    }
+
+
+    escaped = false;
+
+
+    if (inString) {
+      continue;
+    }
+
+
+    // --------------------------------------------------------
+    // OBJECT DEPTH
+    // --------------------------------------------------------
+
+    if (char === "{") {
+
+      depth++;
+
+    }
+
+
+    if (char === "}") {
+
+      depth--;
+
+
+      if (depth === 0) {
+
+        return text.slice(
+          start,
+          i + 1
+        );
+
+      }
+
+    }
+
+  }
+
+
+  return null;
+}
+
+
+// ============================================================
+// 🛠️ LIGHT JSON REPAIR
+// ============================================================
+
+function repairJSON(text) {
+
+  let repaired =
+    String(text || "").trim();
+
+
+  // Remove trailing commas.
+  repaired =
+    repaired.replace(
+      /,\s*([}\]])/g,
+      "$1"
+    );
+
+
+  // Convert smart quotes.
+  repaired =
+    repaired
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'");
+
+
+  return repaired;
+}
+
+
+// ============================================================
+// 🧩 NORMALIZE RAW RESULT
+// ============================================================
+
+function normalizeRawResult(result) {
+
+  if (
+    !result ||
+    typeof result !== "object" ||
+    Array.isArray(result)
+  ) {
 
     throw new Error(
       "QUALITY_JSON_INVALID"
     );
   }
+
+
+  return {
+
+    approved:
+      result.approved === true,
+
+    score:
+      result.score,
+
+    issues:
+      Array.isArray(result.issues)
+        ? result.issues
+        : [],
+
+    fixes:
+      Array.isArray(result.fixes)
+        ? result.fixes
+        : []
+
+  };
 }
