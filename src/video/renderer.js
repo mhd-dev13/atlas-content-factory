@@ -1,7 +1,6 @@
 // ============================================================
 // 🎬 ATLAS VIDEO RENDERER
-// Minimal Cinematic Reel Engine
-// Image + Text + Grain + Slow Zoom
+// Persian Hook + Slow Zoom + Optional Audio
 // ============================================================
 
 const BASE_URL =
@@ -49,25 +48,48 @@ function authHeaders(env) {
 
 
 // ============================================================
-// 🧹 ESCAPE FFMPEG TEXT
+// 🧹 ESCAPE DRAWTEXT
 // ============================================================
 
-function escapeDrawText(text) {
+function escapeDrawtext(value) {
 
-  return String(text || "")
+  return String(value || "")
 
-    .replace(/\\/g, "\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'")
-    .replace(/,/g, "\\,")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]");
+    .replace(
+      /\\/g,
+      "\\\\"
+    )
+
+    .replace(
+      /'/g,
+      "\\'"
+    )
+
+    .replace(
+      /:/g,
+      "\\:"
+    )
+
+    .replace(
+      /,/g,
+      "\\,"
+    )
+
+    .replace(
+      /\[/g,
+      "\\["
+    )
+
+    .replace(
+      /\]/g,
+      "\\]"
+    );
 
 }
 
 
 // ============================================================
-// 📝 SMART TEXT WRAP
+// ✂️ WRAP TEXT
 // ============================================================
 
 function wrapText(
@@ -82,79 +104,137 @@ function wrapText(
 
 
   if (!clean) {
-    return "";
+    return [];
   }
 
 
-  // ----------------------------------------------------------
-  // Existing line breaks
-  // ----------------------------------------------------------
-
-  const paragraphs =
-    clean.split(/\n+/);
+  const words =
+    clean.split(" ");
 
 
   const lines = [];
 
+  let current = "";
+
 
   for (
-    const paragraph of paragraphs
+    const word of words
   ) {
 
-    const words =
-      paragraph
-        .split(" ")
-        .filter(Boolean);
+    const candidate =
+      current
+        ? `${current} ${word}`
+        : word;
 
 
-    let current = "";
-
-
-    for (
-      const word of words
+    if (
+      candidate.length <=
+      maxChars
     ) {
 
-      const candidate =
-        current
-          ? `${current} ${word}`
-          : word;
+      current =
+        candidate;
 
+    } else {
 
-      if (
-        candidate.length >
-          maxChars &&
-        current
-      ) {
+      if (current) {
 
         lines.push(
           current
         );
 
-        current =
-          word;
-
-      } else {
-
-        current =
-          candidate;
-
       }
 
-    }
-
-
-    if (current) {
-
-      lines.push(
-        current
-      );
+      current =
+        word;
 
     }
 
   }
 
 
-  return lines.join("\n");
+  if (current) {
+
+    lines.push(
+      current
+    );
+
+  }
+
+
+  return lines.slice(
+    0,
+    3
+  );
+
+}
+
+
+// ============================================================
+// 📝 BUILD TEXT FILTER
+// ============================================================
+
+function buildTextFilter(
+  hook
+) {
+
+  const lines =
+    wrapText(
+      hook,
+      24
+    );
+
+
+  if (!lines.length) {
+
+    return "";
+
+  }
+
+
+  const text =
+    lines.join("\\n");
+
+
+  const safeText =
+    escapeDrawtext(
+      text
+    );
+
+
+  return [
+
+    "drawtext=",
+
+    "font='DejaVu Sans'",
+
+    `text='${safeText}'`,
+
+    "fontcolor=white",
+
+    "fontsize=58",
+
+    "line_spacing=18",
+
+    "text_shaping=1",
+
+    "x=(w-text_w)/2",
+
+    "y=(h-text_h)/2",
+
+    "box=1",
+
+    "boxcolor=black@0.42",
+
+    "boxborderw=28",
+
+    "shadowcolor=black@0.75",
+
+    "shadowx=3",
+
+    "shadowy=3"
+
+  ].join(":");
 
 }
 
@@ -226,11 +306,6 @@ async function uploadImage(
 
   if (!response.ok) {
 
-    console.error(
-      "ATLAS_UPLOAD_URL_ERROR:",
-      data
-    );
-
     throw new Error(
       `FFMPEG_UPLOAD_URL_FAILED:${JSON.stringify(data)}`
     );
@@ -240,6 +315,7 @@ async function uploadImage(
 
   const uploadUrl =
     data?.result?.uploadUrl;
+
 
   const serverFilename =
     data?.result?.filename;
@@ -280,14 +356,6 @@ async function uploadImage(
 
   if (!uploadResponse.ok) {
 
-    const errorText =
-      await uploadResponse.text();
-
-    console.error(
-      "ATLAS_IMAGE_UPLOAD_ERROR:",
-      errorText
-    );
-
     throw new Error(
       `FFMPEG_IMAGE_UPLOAD_FAILED:${uploadResponse.status}`
     );
@@ -325,13 +393,10 @@ async function uploadImage(
 
   if (!confirmResponse.ok) {
 
-    console.error(
-      "ATLAS_UPLOAD_CONFIRM_ERROR:",
-      confirmData
-    );
-
     throw new Error(
-      `FFMPEG_UPLOAD_CONFIRM_FAILED:${JSON.stringify(confirmData)}`
+      `FFMPEG_UPLOAD_CONFIRM_FAILED:${JSON.stringify(
+        confirmData
+      )}`
     );
 
   }
@@ -372,125 +437,253 @@ async function createVideoJob(
   env,
   fileUrl,
   duration,
-  motion = "zoom_in",
-  overlayText = ""
+  motion,
+  hook,
+  audioUrl
 ) {
 
   // ----------------------------------------------------------
-  // 🎨 Base motion
+  // VIDEO FILTER
   // ----------------------------------------------------------
 
-  let videoFilter;
+  const filters = [
+
+    "scale=1200:2133:force_original_aspect_ratio=increase",
+
+    "crop=1200:2133",
+
+    "zoompan="
+      + "z='min(zoom+0.0015,1.12)':"
+      + "d=300:"
+      + "x='iw/2-(iw/zoom/2)':"
+      + "y='ih/2-(ih/zoom/2)':"
+      + "s=1080x1920:"
+      + "fps=30"
+
+  ];
 
 
-  switch (motion) {
+  // ----------------------------------------------------------
+  // HOOK OVERLAY
+  // ----------------------------------------------------------
 
-    case "zoom_in":
-
-      videoFilter =
-        "scale=1200:2133:force_original_aspect_ratio=increase,"
-        + "crop=1200:2133,"
-        + "zoompan="
-        + "z='min(zoom+0.0015,1.12)':"
-        + "d=300:"
-        + "x='iw/2-(iw/zoom/2)':"
-        + "y='ih/2-(ih/zoom/2)':"
-        + "s=1080x1920:"
-        + "fps=30";
-
-      break;
+  const textFilter =
+    buildTextFilter(
+      hook
+    );
 
 
-    default:
+  if (textFilter) {
 
-      videoFilter =
-        "scale=1080:1920:force_original_aspect_ratio=increase,"
-        + "crop=1080:1920";
+    filters.push(
+      textFilter
+    );
 
   }
 
 
-  // ----------------------------------------------------------
-  // 📝 TEXT OVERLAY
-  // ----------------------------------------------------------
-
-  if (
-    overlayText &&
-    String(overlayText).trim()
-  ) {
-
-    const wrappedText =
-      wrapText(
-        overlayText,
-        24
-      );
-
-
-    const safeText =
-      escapeDrawText(
-        wrappedText
-      );
-
-
-    videoFilter +=
-
-      ",drawtext=" +
-
-      "font='DejaVu Sans':" +
-
-      `text='${safeText}':` +
-
-      "fontcolor=white:" +
-
-      "fontsize=64:" +
-
-      "x=(w-text_w)/2:" +
-
-      "y=(h-text_h)/2:" +
-
-      "line_spacing=14:" +
-
-      "text_shaping=1:" +
-
-      "box=1:" +
-
-      "boxcolor=black@0.28:" +
-
-      "boxborderw=28:" +
-
-      "shadowcolor=black@0.75:" +
-
-      "shadowx=3:" +
-
-      "shadowy=3";
-
-  }
-
-
-  // ----------------------------------------------------------
-  // 🌫️ SUBTLE GRAIN
-  // ----------------------------------------------------------
-
-  videoFilter +=
-    ",noise=alls=5:allf=t+u";
-
-
-  console.log(
-    "ATLAS_MOTION:",
-    motion
-  );
-
-
-  console.log(
-    "ATLAS_OVERLAY_TEXT:",
-    overlayText
-  );
+  const videoFilter =
+    filters.join(",");
 
 
   console.log(
     "ATLAS_VIDEO_FILTER:",
     videoFilter
   );
+
+
+  // ----------------------------------------------------------
+  // INPUTS
+  // ----------------------------------------------------------
+
+  const inputs = [
+
+    {
+
+      url:
+        fileUrl,
+
+      options: [
+
+        {
+
+          option:
+            "-loop",
+
+          argument:
+            "1"
+
+        },
+
+        {
+
+          option:
+            "-framerate",
+
+          argument:
+            "30"
+
+        }
+
+      ]
+
+    }
+
+  ];
+
+
+  // ----------------------------------------------------------
+  // OPTIONAL AUDIO
+  // ----------------------------------------------------------
+
+  const hasAudio =
+    Boolean(
+      audioUrl
+    );
+
+
+  if (hasAudio) {
+
+    inputs.push({
+
+      url:
+        audioUrl,
+
+      options: [
+
+        {
+
+          option:
+            "-stream_loop",
+
+          argument:
+            "-1"
+
+        }
+
+      ]
+
+    });
+
+  }
+
+
+  // ----------------------------------------------------------
+  // OUTPUT OPTIONS
+  // ----------------------------------------------------------
+
+  const options = [
+
+    {
+
+      option:
+        "-t",
+
+      argument:
+        String(duration)
+
+    },
+
+    {
+
+      option:
+        "-vf",
+
+      argument:
+        videoFilter
+
+    },
+
+    {
+
+      option:
+        "-c:v",
+
+      argument:
+        "libx264"
+
+    },
+
+    {
+
+      option:
+        "-pix_fmt",
+
+      argument:
+        "yuv420p"
+
+    },
+
+    {
+
+      option:
+        "-r",
+
+      argument:
+        "30"
+
+    },
+
+    {
+
+      option:
+        "-movflags",
+
+      argument:
+        "+faststart"
+
+    }
+
+  ];
+
+
+  if (hasAudio) {
+
+    options.push({
+
+      option:
+        "-c:a",
+
+      argument:
+        "aac"
+
+    });
+
+
+    options.push({
+
+      option:
+        "-b:a",
+
+      argument:
+        "128k"
+
+    });
+
+
+    options.push({
+
+      option:
+        "-shortest",
+
+      argument:
+        ""
+
+    });
+
+  } else {
+
+    options.push({
+
+      option:
+        "-an",
+
+      argument:
+        ""
+
+    });
+
+  }
 
 
   const response =
@@ -506,117 +699,12 @@ async function createVideoJob(
         body:
           JSON.stringify({
 
-            inputs: [
-
-              {
-
-                url:
-                  fileUrl,
-
-                options: [
-
-                  {
-
-                    option:
-                      "-loop",
-
-                    argument:
-                      "1"
-
-                  },
-
-                  {
-
-                    option:
-                      "-framerate",
-
-                    argument:
-                      "30"
-
-                  }
-
-                ]
-
-              }
-
-            ],
+            inputs,
 
             outputFormat:
               "mp4",
 
-            options: [
-
-              {
-
-                option:
-                  "-t",
-
-                argument:
-                  String(duration)
-
-              },
-
-              {
-
-                option:
-                  "-vf",
-
-                argument:
-                  videoFilter
-
-              },
-
-              {
-
-                option:
-                  "-c:v",
-
-                argument:
-                  "libx264"
-
-              },
-
-              {
-
-                option:
-                  "-pix_fmt",
-
-                argument:
-                  "yuv420p"
-
-              },
-
-              {
-
-                option:
-                  "-r",
-
-                argument:
-                  "30"
-
-              },
-
-              {
-
-                option:
-                  "-an",
-
-                argument:
-                  ""
-
-              },
-
-              {
-
-                option:
-                  "-movflags",
-
-                argument:
-                  "+faststart"
-
-              }
-
-            ]
+            options
 
           })
 
@@ -649,11 +737,6 @@ async function createVideoJob(
 
   if (!jobId) {
 
-    console.error(
-      "ATLAS_TRANSCODE_INVALID:",
-      data
-    );
-
     throw new Error(
       "FFMPEG_JOB_ID_MISSING"
     );
@@ -676,7 +759,7 @@ async function waitForVideo(
 ) {
 
   const maxAttempts =
-    40;
+    45;
 
 
   for (
@@ -685,7 +768,9 @@ async function waitForVideo(
     attempt++
   ) {
 
-    await sleep(2000);
+    await sleep(
+      2000
+    );
 
 
     const response =
@@ -829,7 +914,7 @@ export async function renderImageToVideo(
 
   const duration =
     Math.max(
-      1,
+      5,
       Math.min(
         30,
         Number(
@@ -844,11 +929,16 @@ export async function renderImageToVideo(
     "zoom_in";
 
 
-  const overlayText =
+  const hook =
     String(
-      options.overlayText ||
-      ""
+      options.hook || ""
     ).trim();
+
+
+  const audioUrl =
+    options.audioUrl ||
+    env?.ATLAS_AUDIO_URL ||
+    "";
 
 
   console.log(
@@ -859,7 +949,10 @@ export async function renderImageToVideo(
 
       motion,
 
-      overlayText,
+      hook,
+
+      hasAudio:
+        Boolean(audioUrl),
 
       bytes:
         imageBuffer?.byteLength
@@ -868,10 +961,6 @@ export async function renderImageToVideo(
   );
 
 
-  // ----------------------------------------------------------
-  // Upload
-  // ----------------------------------------------------------
-
   const uploaded =
     await uploadImage(
       env,
@@ -879,33 +968,29 @@ export async function renderImageToVideo(
     );
 
 
-  // ----------------------------------------------------------
-  // Create job
-  // ----------------------------------------------------------
-
   const jobId =
     await createVideoJob(
+
       env,
+
       uploaded.fileUrl,
+
       duration,
+
       motion,
-      overlayText
+
+      hook,
+
+      audioUrl
+
     );
 
-
-  // ----------------------------------------------------------
-  // Wait
-  // ----------------------------------------------------------
 
   await waitForVideo(
     env,
     jobId
   );
 
-
-  // ----------------------------------------------------------
-  // Download
-  // ----------------------------------------------------------
 
   const videoUrl =
     await getDownloadUrl(
@@ -922,7 +1007,10 @@ export async function renderImageToVideo(
 
       motion,
 
-      overlayText,
+      hook,
+
+      hasAudio:
+        Boolean(audioUrl),
 
       videoUrl
 
@@ -940,7 +1028,10 @@ export async function renderImageToVideo(
 
     motion,
 
-    overlayText
+    hook,
+
+    audio:
+      Boolean(audioUrl)
 
   };
 
