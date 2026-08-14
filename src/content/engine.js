@@ -1,18 +1,15 @@
 // ============================================================
 // 🏭 ATLAS CONTENT ENGINE
-// Central content generation layer
 // ============================================================
 
 import { generateAI } from "../ai/engine.js";
 
 
 // ============================================================
-// 🎯 GENERATE POST
+// 📝 GENERATE POST
 // ============================================================
 
-export async function generatePost(env, idea = "") {
-
-  const ideaText = idea?.trim() || "Create a fresh idea.";
+export async function generatePost(env) {
 
   const messages = [
 
@@ -22,35 +19,44 @@ export async function generatePost(env, idea = "") {
       content: `
 You are Atlas Content Factory.
 
-You create short, engaging social media content
-for an Instagram page focused on:
+Create social media content for a bilingual
+English + Persian Instagram page.
 
-calmness
-relaxation
-ASMR
-peaceful moments
-mindfulness
+Topic:
+calmness, relaxation, ASMR, peaceful moments.
 
-The audience is bilingual:
-English + Persian.
+IMPORTANT:
 
-IMPORTANT RULES:
+Return ONLY ONE valid JSON object.
 
-- Return ONLY the final content.
-- Never show reasoning.
-- Never show analysis.
-- Never use <think>.
-- Never write "Okay".
-- Never write "The user wants".
-- Never write "Answer:".
-- Do not make medical claims.
-- Do not promise treatment.
-- Do not promise guaranteed results.
-- Keep English natural.
-- Keep Persian natural and conversational.
-- Do not translate word-for-word.
-- English and Persian must be separated.
-- Keep the result concise.
+Do not write anything before the JSON.
+Do not write anything after the JSON.
+Do not explain.
+Do not reason.
+Do not use markdown.
+Do not use <think>.
+Do not output multiple versions.
+
+The Persian must sound like natural modern Persian.
+Never translate English word-by-word.
+
+Avoid medical claims.
+Avoid treatment claims.
+Avoid guaranteed results.
+
+Use this exact JSON structure:
+
+{
+  "hook_en": "",
+  "caption_en": "",
+  "cta_en": "",
+  "hook_fa": "",
+  "caption_fa": "",
+  "cta_fa": "",
+  "hashtags": []
+}
+
+Keep the content short.
       `.trim()
     },
 
@@ -58,118 +64,269 @@ IMPORTANT RULES:
       role: "user",
 
       content: `
-Create ONE Instagram post based on this idea:
+Create ONE Instagram post.
 
-${ideaText}
+English:
+- natural
+- emotional
+- short
+- suitable for Instagram
 
-Return EXACTLY this structure:
+Persian:
+- natural
+- conversational
+- NOT literal translation
+- grammatically correct
 
-📦 ATLAS POST
+Use 5 to 8 hashtags.
 
-🇬🇧 ENGLISH
-
-Hook:
-[one short hook]
-
-Caption:
-[2 short sentences]
-
-CTA:
-[one short sentence]
-
-
-🇮🇷 فارسی
-
-هوک:
-[یک هوک کوتاه و طبیعی]
-
-کپشن:
-[۲ جمله کوتاه]
-
-CTA:
-[یک جمله کوتاه]
-
-
-#️⃣ HASHTAGS
-
-[5 to 8 relevant hashtags]
-
-Maximum 130 words.
+Return JSON only.
       `.trim()
     }
 
   ];
 
 
-  return await generateAI(
+  const raw = await generateAI(
     env,
     messages
+  );
+
+  return formatPost(
+    extractJSON(raw)
   );
 }
 
 
 // ============================================================
-// 💡 GENERATE IDEA
-// Future shared idea engine
+// 🧠 EXTRACT FIRST VALID JSON
 // ============================================================
 
-export async function generateIdea(env) {
+function extractJSON(text) {
 
-  const messages = [
+  if (!text) {
+    throw new Error(
+      "POST_EMPTY_RESPONSE"
+    );
+  }
 
-    {
-      role: "system",
+  let cleaned =
+    String(text)
+      .trim()
+      .replace(
+        /<think>[\s\S]*?<\/think>/gi,
+        ""
+      )
+      .trim();
 
-      content: `
-You are Atlas Content Factory.
 
-Create short bilingual Instagram ideas
-about calmness, relaxation, ASMR and peaceful content.
+  // ----------------------------------------------------------
+  // Find first JSON object
+  // ----------------------------------------------------------
 
-Return ONLY the final content.
-No reasoning.
-No analysis.
-No <think>.
-No medical claims.
-No guaranteed results.
+  const start =
+    cleaned.indexOf("{");
 
-English and Persian must sound natural.
-      `.trim()
-    },
+  if (start === -1) {
+    throw new Error(
+      "POST_JSON_NOT_FOUND"
+    );
+  }
 
-    {
-      role: "user",
 
-      content: `
-Create ONE short Instagram idea.
+  // ----------------------------------------------------------
+  // Find matching closing brace
+  // ----------------------------------------------------------
 
-Use exactly:
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
 
-💡 IDEA
+  for (
+    let i = start;
+    i < cleaned.length;
+    i++
+  ) {
 
-🇬🇧 Hook:
-[short English hook]
+    const char =
+      cleaned[i];
 
-🇮🇷 هوک:
-[short Persian hook]
 
-🎬 Concept:
-[one short sentence]
+    if (
+      char === "\\" &&
+      !escaped
+    ) {
 
-🎨 Visual:
-[one short sentence]
-
-📝 CTA:
-[one short sentence]
-
-Maximum 50 words.
-      `.trim()
+      escaped = true;
+      continue;
     }
 
+
+    if (
+      char === '"' &&
+      !escaped
+    ) {
+
+      inString =
+        !inString;
+    }
+
+
+    escaped = false;
+
+
+    if (inString) {
+      continue;
+    }
+
+
+    if (char === "{") {
+      depth++;
+    }
+
+
+    if (char === "}") {
+
+      depth--;
+
+      if (depth === 0) {
+
+        const jsonText =
+          cleaned.slice(
+            start,
+            i + 1
+          );
+
+        try {
+
+          return JSON.parse(
+            jsonText
+          );
+
+        } catch (error) {
+
+          console.error(
+            "POST_JSON_PARSE_ERROR:",
+            jsonText
+          );
+
+          throw new Error(
+            "POST_INVALID_JSON"
+          );
+        }
+      }
+    }
+  }
+
+
+  throw new Error(
+    "POST_JSON_INCOMPLETE"
+  );
+}
+
+
+// ============================================================
+// 🧹 VALIDATE CONTENT
+// ============================================================
+
+function validatePost(post) {
+
+  const required = [
+    "hook_en",
+    "caption_en",
+    "cta_en",
+    "hook_fa",
+    "caption_fa",
+    "cta_fa"
   ];
 
-  return await generateAI(
-    env,
-    messages
-  );
+
+  for (
+    const field of required
+  ) {
+
+    if (
+      typeof post[field] !== "string" ||
+      !post[field].trim()
+    ) {
+
+      throw new Error(
+        `POST_FIELD_MISSING:${field}`
+      );
+    }
+  }
+
+
+  if (
+    !Array.isArray(
+      post.hashtags
+    )
+  ) {
+
+    post.hashtags = [];
+  }
+
+
+  return post;
+}
+
+
+// ============================================================
+// 📦 FORMAT TELEGRAM POST
+// ============================================================
+
+function formatPost(post) {
+
+  post =
+    validatePost(post);
+
+
+  const hashtags =
+    post.hashtags
+      .map(tag => {
+
+        let value =
+          String(tag)
+            .trim();
+
+        if (
+          value &&
+          !value.startsWith("#")
+        ) {
+
+          value =
+            "#" + value;
+        }
+
+        return value;
+
+      })
+      .filter(Boolean)
+      .slice(0, 8)
+      .join(" ");
+
+
+  return [
+    "📦 ATLAS POST",
+    "",
+    "🇬🇧 ENGLISH",
+    "",
+    `Hook: ${post.hook_en}`,
+    "",
+    `Caption: ${post.caption_en}`,
+    "",
+    `CTA: ${post.cta_en}`,
+    "",
+    "🇮🇷 فارسی",
+    "",
+    `هوک: ${post.hook_fa}`,
+    "",
+    `کپشن: ${post.caption_fa}`,
+    "",
+    `CTA: ${post.cta_fa}`,
+    "",
+    "🔖 HASHTAGS",
+    "",
+    hashtags
+  ].join("\n");
 }
