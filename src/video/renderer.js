@@ -1,6 +1,6 @@
 // ============================================================
 // 🎬 ATLAS VIDEO RENDERER
-// Motion Engine — Slow Zoom In
+// Motion Engine + Hook Text Overlay
 // ============================================================
 
 const BASE_URL =
@@ -12,9 +12,11 @@ const BASE_URL =
 // ============================================================
 
 function sleep(ms) {
+
   return new Promise(
     resolve => setTimeout(resolve, ms)
   );
+
 }
 
 
@@ -33,12 +35,49 @@ function authHeaders(env) {
   }
 
   return {
+
     "Authorization":
       `Bearer ${env.FFMPEG_MICRO_API_KEY}`,
 
     "Content-Type":
       "application/json"
+
   };
+
+}
+
+
+// ============================================================
+// 🧹 TEXT SANITIZER
+// ============================================================
+
+function sanitizeText(text) {
+
+  if (
+    text === undefined ||
+    text === null
+  ) {
+
+    return "";
+
+  }
+
+
+  return String(text)
+
+    .replace(/\r?\n/g, " ")
+
+    .replace(/\\/g, "\\\\")
+
+    .replace(/'/g, "\\'")
+
+    .replace(/:/g, "\\:")
+
+    .replace(/,/g, "\\,")
+
+    .replace(/%/g, "\\%")
+
+    .trim();
 
 }
 
@@ -82,18 +121,25 @@ async function uploadImage(
     await fetch(
       `${BASE_URL}/v1/upload/presigned-url`,
       {
-        method: "POST",
+
+        method:
+          "POST",
 
         headers:
           authHeaders(env),
 
         body:
           JSON.stringify({
+
             filename,
+
             contentType:
               "image/png",
+
             fileSize
+
           })
+
       }
     );
 
@@ -119,6 +165,7 @@ async function uploadImage(
   const uploadUrl =
     data?.result?.uploadUrl;
 
+
   const serverFilename =
     data?.result?.filename;
 
@@ -143,15 +190,20 @@ async function uploadImage(
     await fetch(
       uploadUrl,
       {
-        method: "PUT",
+
+        method:
+          "PUT",
 
         headers: {
+
           "Content-Type":
             "image/png"
+
         },
 
         body:
           imageBuffer
+
       }
     );
 
@@ -161,10 +213,12 @@ async function uploadImage(
     const errorText =
       await uploadResponse.text();
 
+
     console.error(
       "ATLAS_IMAGE_UPLOAD_ERROR:",
       errorText
     );
+
 
     throw new Error(
       `FFMPEG_IMAGE_UPLOAD_FAILED:${uploadResponse.status}`
@@ -181,17 +235,23 @@ async function uploadImage(
     await fetch(
       `${BASE_URL}/v1/upload/confirm`,
       {
-        method: "POST",
+
+        method:
+          "POST",
 
         headers:
           authHeaders(env),
 
         body:
           JSON.stringify({
+
             filename:
               serverFilename,
+
             fileSize
+
           })
+
       }
     );
 
@@ -206,6 +266,7 @@ async function uploadImage(
       "ATLAS_UPLOAD_CONFIRM_ERROR:",
       confirmData
     );
+
 
     throw new Error(
       `FFMPEG_UPLOAD_CONFIRM_FAILED:${JSON.stringify(
@@ -230,13 +291,168 @@ async function uploadImage(
 
 
   return {
+
     filename:
       serverFilename,
 
     fileUrl,
 
     fileSize
+
   };
+
+}
+
+
+// ============================================================
+// 🎨 BUILD VIDEO FILTER
+// ============================================================
+
+function buildVideoFilter(
+  motion,
+  hook
+) {
+
+  let motionFilter;
+
+
+  // ----------------------------------------------------------
+  // Motion
+  // ----------------------------------------------------------
+
+  switch (motion) {
+
+    case "zoom_in":
+
+      motionFilter =
+
+        "scale=1200:2133:force_original_aspect_ratio=increase,"
+        +
+
+        "crop=1200:2133,"
+        +
+
+        "zoompan="
+        +
+
+        "z='min(zoom+0.0015,1.12)':"
+        +
+
+        "d=300:"
+        +
+
+        "x='iw/2-(iw/zoom/2)':"
+        +
+
+        "y='ih/2-(ih/zoom/2)':"
+        +
+
+        "s=1080x1920:"
+        +
+
+        "fps=30";
+
+      break;
+
+
+    default:
+
+      motionFilter =
+
+        "scale=1080:1920:"
+        +
+
+        "force_original_aspect_ratio=increase,"
+        +
+
+        "crop=1080:1920";
+
+  }
+
+
+  // ----------------------------------------------------------
+  // No Hook
+  // ----------------------------------------------------------
+
+  if (!hook) {
+
+    return motionFilter;
+
+  }
+
+
+  // ----------------------------------------------------------
+  // Hook
+  // ----------------------------------------------------------
+
+  const safeHook =
+    sanitizeText(hook);
+
+
+  if (!safeHook) {
+
+    return motionFilter;
+
+  }
+
+
+  /*
+   * IMPORTANT:
+   *
+   * drawtext is intentionally placed AFTER zoompan.
+   *
+   * Therefore:
+   *
+   * Image → Motion → Text
+   *
+   * and not:
+   *
+   * Image → Text → Motion
+   *
+   * This keeps the Hook stable while the image moves.
+   */
+
+
+  const textFilter =
+
+    "drawtext=" +
+
+    "font='DejaVu Sans':" +
+
+    `text='${safeHook}':` +
+
+    "fontcolor=white:" +
+
+    "fontsize=64:" +
+
+    "fontweight=bold:" +
+
+    "x=(w-text_w)/2:" +
+
+    "y=h*0.16:" +
+
+    "box=1:" +
+
+    "boxcolor=black@0.48:" +
+
+    "boxborderw=22:" +
+
+    "shadowcolor=black@0.8:" +
+
+    "shadowx=3:" +
+
+    "shadowy=3";
+
+
+  return (
+
+    motionFilter +
+
+    "," +
+
+    textFilter
+
+  );
 
 }
 
@@ -249,41 +465,19 @@ async function createVideoJob(
   env,
   fileUrl,
   duration,
-  motion = "zoom_in"
+  motion = "zoom_in",
+  hook = ""
 ) {
 
   // ----------------------------------------------------------
-  // Motion filters
+  // Build filter
   // ----------------------------------------------------------
 
-  let videoFilter;
-
-
-  switch (motion) {
-
-    case "zoom_in":
-
-      videoFilter =
-        "scale=1200:2133:force_original_aspect_ratio=increase,"
-        + "crop=1200:2133,"
-        + "zoompan="
-        + "z='min(zoom+0.0015,1.12)':"
-        + "d=300:"
-        + "x='iw/2-(iw/zoom/2)':"
-        + "y='ih/2-(ih/zoom/2)':"
-        + "s=1080x1920:"
-        + "fps=30";
-
-      break;
-
-
-    default:
-
-      videoFilter =
-        "scale=1080:1920:force_original_aspect_ratio=increase,"
-        + "crop=1080:1920";
-
-  }
+  const videoFilter =
+    buildVideoFilter(
+      motion,
+      hook
+    );
 
 
   console.log(
@@ -292,11 +486,25 @@ async function createVideoJob(
   );
 
 
+  console.log(
+    "ATLAS_HOOK:",
+    hook || "(none)"
+  );
+
+
+  console.log(
+    "ATLAS_VIDEO_FILTER:",
+    videoFilter
+  );
+
+
   const response =
     await fetch(
       `${BASE_URL}/v1/transcodes`,
       {
-        method: "POST",
+
+        method:
+          "POST",
 
         headers:
           authHeaders(env),
@@ -307,25 +515,30 @@ async function createVideoJob(
             inputs: [
 
               {
+
                 url:
                   fileUrl,
 
                 options: [
 
                   {
+
                     option:
                       "-loop",
 
                     argument:
                       "1"
+
                   },
 
                   {
+
                     option:
                       "-framerate",
 
                     argument:
                       "30"
+
                   }
 
                 ]
@@ -340,64 +553,79 @@ async function createVideoJob(
             options: [
 
               {
+
                 option:
                   "-t",
 
                 argument:
                   String(duration)
+
               },
 
               {
+
                 option:
                   "-vf",
 
                 argument:
                   videoFilter
+
               },
 
               {
+
                 option:
                   "-c:v",
 
                 argument:
                   "libx264"
+
               },
 
               {
+
                 option:
                   "-pix_fmt",
 
                 argument:
                   "yuv420p"
+
               },
 
               {
+
                 option:
                   "-r",
 
                 argument:
                   "30"
+
               },
 
               {
+
                 option:
                   "-an",
 
                 argument:
                   ""
+
               },
 
               {
+
                 option:
                   "-movflags",
 
                 argument:
                   "+faststart"
+
               }
 
             ]
 
           })
+
       }
     );
 
@@ -412,6 +640,7 @@ async function createVideoJob(
       "ATLAS_TRANSCODE_CREATE_ERROR:",
       data
     );
+
 
     throw new Error(
       `FFMPEG_TRANSCODE_FAILED:${JSON.stringify(data)}`
@@ -431,6 +660,7 @@ async function createVideoJob(
       "ATLAS_TRANSCODE_INVALID:",
       data
     );
+
 
     throw new Error(
       "FFMPEG_JOB_ID_MISSING"
@@ -470,10 +700,14 @@ async function waitForVideo(
       await fetch(
         `${BASE_URL}/v1/transcodes/${jobId}`,
         {
+
           headers: {
+
             "Authorization":
               `Bearer ${env.FFMPEG_MICRO_API_KEY}`
+
           }
+
         }
       );
 
@@ -504,7 +738,8 @@ async function waitForVideo(
 
 
     if (
-      status === "completed"
+      status ===
+      "completed"
     ) {
 
       return data;
@@ -547,10 +782,14 @@ async function getDownloadUrl(
     await fetch(
       `${BASE_URL}/v1/transcodes/${jobId}/download?url=true`,
       {
+
         headers: {
+
           "Authorization":
             `Bearer ${env.FFMPEG_MICRO_API_KEY}`
+
         }
+
       }
     );
 
@@ -614,16 +853,31 @@ export async function renderImageToVideo(
     "zoom_in";
 
 
+  const hook =
+    options.hook ||
+    "";
+
+
   console.log(
     "ATLAS_RENDER_START:",
     {
+
       duration,
+
       motion,
+
+      hook,
+
       bytes:
         imageBuffer?.byteLength
+
     }
   );
 
+
+  // ----------------------------------------------------------
+  // Upload
+  // ----------------------------------------------------------
 
   const uploaded =
     await uploadImage(
@@ -632,20 +886,33 @@ export async function renderImageToVideo(
     );
 
 
+  // ----------------------------------------------------------
+  // Create job
+  // ----------------------------------------------------------
+
   const jobId =
     await createVideoJob(
       env,
       uploaded.fileUrl,
       duration,
-      motion
+      motion,
+      hook
     );
 
+
+  // ----------------------------------------------------------
+  // Wait
+  // ----------------------------------------------------------
 
   await waitForVideo(
     env,
     jobId
   );
 
+
+  // ----------------------------------------------------------
+  // Download
+  // ----------------------------------------------------------
 
   const videoUrl =
     await getDownloadUrl(
@@ -657,18 +924,31 @@ export async function renderImageToVideo(
   console.log(
     "ATLAS_RENDER_COMPLETE:",
     {
+
       jobId,
+
       motion,
+
+      hook,
+
       videoUrl
+
     }
   );
 
 
   return {
+
     jobId,
+
     videoUrl,
+
     duration,
-    motion
+
+    motion,
+
+    hook
+
   };
 
 }
