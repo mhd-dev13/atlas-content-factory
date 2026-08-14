@@ -1,6 +1,7 @@
 import { CONFIG } from "../config.js";
 
 export async function generateAI(env, messages) {
+
   if (!env.AI) {
     throw new Error("CLOUDFLARE_AI_BINDING_MISSING");
   }
@@ -12,12 +13,16 @@ export async function generateAI(env, messages) {
     .join("\n\n");
 
   try {
+
     const result = await env.AI.run(
       CONFIG.model,
       {
         prompt,
+
         max_tokens: CONFIG.maxTokens,
+
         temperature: CONFIG.temperature,
+
         top_p: 0.85
       }
     );
@@ -27,7 +32,7 @@ export async function generateAI(env, messages) {
       JSON.stringify(result)
     );
 
-    const answer =
+    let answer =
       result?.response ||
       result?.result?.response ||
       "";
@@ -38,7 +43,15 @@ export async function generateAI(env, messages) {
       );
     }
 
-    return String(answer).trim();
+    answer = cleanAIOutput(answer);
+
+    if (!answer) {
+      throw new Error(
+        "CLOUDFLARE_AI_EMPTY_AFTER_CLEAN"
+      );
+    }
+
+    return answer;
 
   } catch (error) {
 
@@ -49,4 +62,40 @@ export async function generateAI(env, messages) {
 
     throw error;
   }
+}
+
+
+// ============================================================
+// 🧹 CLEAN AI OUTPUT
+// ============================================================
+
+function cleanAIOutput(text) {
+
+  let result = String(text).trim();
+
+  // Remove <think>...</think>
+  result = result.replace(
+    /<think>[\s\S]*?<\/think>/gi,
+    ""
+  );
+
+  // Remove possible Assistant prefix
+  result = result.replace(
+    /^assistant\s*:\s*/i,
+    ""
+  );
+
+  // Remove Atlas prefix
+  result = result.replace(
+    /^(atlas|atlas bot)\s*:\s*/i,
+    ""
+  );
+
+  // Remove excessive empty lines
+  result = result.replace(
+    /\n{3,}/g,
+    "\n\n"
+  );
+
+  return result.trim();
 }
