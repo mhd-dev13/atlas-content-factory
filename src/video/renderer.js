@@ -1,6 +1,7 @@
 // ============================================================
 // 🎬 ATLAS VIDEO RENDERER
 // Motion Engine + Hook Text Overlay
+// FFmpeg Micro Compatible
 // ============================================================
 
 const BASE_URL =
@@ -34,6 +35,7 @@ function authHeaders(env) {
 
   }
 
+
   return {
 
     "Authorization":
@@ -65,17 +67,35 @@ function sanitizeText(text) {
 
   return String(text)
 
-    .replace(/\r?\n/g, " ")
+    .replace(
+      /\r?\n/g,
+      " "
+    )
 
-    .replace(/\\/g, "\\\\")
+    .replace(
+      /\\/g,
+      "\\\\"
+    )
 
-    .replace(/'/g, "\\'")
+    .replace(
+      /'/g,
+      "\\'"
+    )
 
-    .replace(/:/g, "\\:")
+    .replace(
+      /:/g,
+      "\\:"
+    )
 
-    .replace(/,/g, "\\,")
+    .replace(
+      /,/g,
+      "\\,"
+    )
 
-    .replace(/%/g, "\\%")
+    .replace(
+      /%/g,
+      "\\%"
+    )
 
     .trim();
 
@@ -155,6 +175,7 @@ async function uploadImage(
       data
     );
 
+
     throw new Error(
       `FFMPEG_UPLOAD_URL_FAILED:${JSON.stringify(data)}`
     );
@@ -228,7 +249,7 @@ async function uploadImage(
 
 
   // ----------------------------------------------------------
-  // Confirm
+  // Confirm upload
   // ----------------------------------------------------------
 
   const confirmResponse =
@@ -316,9 +337,9 @@ function buildVideoFilter(
   let motionFilter;
 
 
-  // ----------------------------------------------------------
-  // Motion
-  // ----------------------------------------------------------
+  // ==========================================================
+  // 🔍 MOTION
+  // ==========================================================
 
   switch (motion) {
 
@@ -326,7 +347,10 @@ function buildVideoFilter(
 
       motionFilter =
 
-        "scale=1200:2133:force_original_aspect_ratio=increase,"
+        "scale=1200:2133:"
+        +
+
+        "force_original_aspect_ratio=increase,"
         +
 
         "crop=1200:2133,"
@@ -370,23 +394,14 @@ function buildVideoFilter(
   }
 
 
-  // ----------------------------------------------------------
-  // No Hook
-  // ----------------------------------------------------------
-
-  if (!hook) {
-
-    return motionFilter;
-
-  }
-
-
-  // ----------------------------------------------------------
-  // Hook
-  // ----------------------------------------------------------
+  // ==========================================================
+  // 📝 HOOK
+  // ==========================================================
 
   const safeHook =
-    sanitizeText(hook);
+    sanitizeText(
+      hook
+    );
 
 
   if (!safeHook) {
@@ -399,17 +414,15 @@ function buildVideoFilter(
   /*
    * IMPORTANT:
    *
-   * drawtext is intentionally placed AFTER zoompan.
+   * Text is added AFTER zoompan.
    *
-   * Therefore:
+   * Image:
+   *     ↓
+   * Motion
+   *     ↓
+   * Hook
    *
-   * Image → Motion → Text
-   *
-   * and not:
-   *
-   * Image → Text → Motion
-   *
-   * This keeps the Hook stable while the image moves.
+   * Therefore the Hook stays stable.
    */
 
 
@@ -417,15 +430,13 @@ function buildVideoFilter(
 
     "drawtext=" +
 
-    "font='DejaVu Sans':" +
+    "font='DejaVu Sans Bold':" +
 
     `text='${safeHook}':` +
 
     "fontcolor=white:" +
 
     "fontsize=64:" +
-
-    "fontweight=bold:" +
 
     "x=(w-text_w)/2:" +
 
@@ -458,7 +469,7 @@ function buildVideoFilter(
 
 
 // ============================================================
-// 🎥 CREATE VIDEO
+// 🎥 CREATE VIDEO JOB
 // ============================================================
 
 async function createVideoJob(
@@ -468,10 +479,6 @@ async function createVideoJob(
   motion = "zoom_in",
   hook = ""
 ) {
-
-  // ----------------------------------------------------------
-  // Build filter
-  // ----------------------------------------------------------
 
   const videoFilter =
     buildVideoFilter(
@@ -675,7 +682,7 @@ async function createVideoJob(
 
 
 // ============================================================
-// 🔄 WAIT
+// 🔄 WAIT FOR VIDEO
 // ============================================================
 
 async function waitForVideo(
@@ -693,7 +700,9 @@ async function waitForVideo(
     attempt++
   ) {
 
-    await sleep(2000);
+    await sleep(
+      2000
+    );
 
 
     const response =
@@ -727,7 +736,8 @@ async function waitForVideo(
 
     const status =
       String(
-        data?.status || ""
+        data?.status ||
+        ""
       ).toLowerCase();
 
 
@@ -770,7 +780,7 @@ async function waitForVideo(
 
 
 // ============================================================
-// 📥 DOWNLOAD URL
+// 📥 GET DOWNLOAD URL
 // ============================================================
 
 async function getDownloadUrl(
@@ -842,7 +852,8 @@ export async function renderImageToVideo(
       Math.min(
         30,
         Number(
-          options.duration || 10
+          options.duration ||
+          10
         )
       )
     );
@@ -892,11 +903,17 @@ export async function renderImageToVideo(
 
   const jobId =
     await createVideoJob(
+
       env,
+
       uploaded.fileUrl,
+
       duration,
+
       motion,
+
       hook
+
     );
 
 
