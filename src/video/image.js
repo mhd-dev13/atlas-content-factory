@@ -3,21 +3,37 @@
 // Cloudflare Workers AI
 // ============================================================
 
-const IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell";
+const IMAGE_MODEL =
+  "@cf/black-forest-labs/flux-1-schnell";
 
 
 // ============================================================
 // 🖼️ GENERATE IMAGE
 // ============================================================
 
-export async function generateImage(env, prompt) {
+export async function generateImage(
+  env,
+  prompt
+) {
 
   if (!env?.AI) {
-    throw new Error("CLOUDFLARE_AI_BINDING_MISSING");
+
+    throw new Error(
+      "CLOUDFLARE_AI_BINDING_MISSING"
+    );
+
   }
 
-  if (!prompt || !String(prompt).trim()) {
-    throw new Error("IMAGE_PROMPT_MISSING");
+
+  if (
+    !prompt ||
+    !String(prompt).trim()
+  ) {
+
+    throw new Error(
+      "IMAGE_PROMPT_MISSING"
+    );
+
   }
 
 
@@ -52,18 +68,21 @@ calmness, relaxation, ASMR and peaceful content.
 
   try {
 
+    // --------------------------------------------------------
+    // Cloudflare Workers AI
+    // --------------------------------------------------------
+
     const result =
       await env.AI.run(
         IMAGE_MODEL,
         {
-          prompt: finalPrompt,
-          num_steps: 4
+          prompt: finalPrompt
         }
       );
 
 
     // --------------------------------------------------------
-    // Cloudflare Workers AI normally returns image bytes.
+    // Direct binary response
     // --------------------------------------------------------
 
     if (
@@ -71,6 +90,7 @@ calmness, relaxation, ASMR and peaceful content.
     ) {
 
       return result;
+
     }
 
 
@@ -78,31 +98,40 @@ calmness, relaxation, ASMR and peaceful content.
       result instanceof Uint8Array
     ) {
 
-      return result.buffer;
+      return result.buffer.slice(
+        result.byteOffset,
+        result.byteOffset +
+        result.byteLength
+      );
+
     }
 
 
     // --------------------------------------------------------
-    // Some responses may contain an image property.
+    // Base64 image response
     // --------------------------------------------------------
 
-    if (result?.image) {
+    if (
+      result &&
+      typeof result.image === "string"
+    ) {
 
-      if (
-        typeof result.image === "string"
-      ) {
+      const binary =
+        Uint8Array.from(
+          atob(result.image),
+          char =>
+            char.charCodeAt(0)
+        );
 
-        const binary =
-          Uint8Array.from(
-            atob(result.image),
-            char => char.charCodeAt(0)
-          );
 
-        return binary.buffer;
-      }
+      return binary.buffer;
 
     }
 
+
+    // --------------------------------------------------------
+    // Unexpected response
+    // --------------------------------------------------------
 
     console.error(
       "ATLAS_IMAGE_UNEXPECTED_RESPONSE:",
@@ -121,6 +150,9 @@ calmness, relaxation, ASMR and peaceful content.
       error?.stack || error
     );
 
+
     throw error;
+
   }
+
 }
