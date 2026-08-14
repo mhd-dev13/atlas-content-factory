@@ -1,6 +1,16 @@
+// ============================================================
+// 🤖 ATLAS ROUTER
+// ============================================================
+
 import { sendMessage } from "./telegram/api.js";
 import { generateAI } from "./ai/engine.js";
+import { generatePost } from "./content/engine.js";
 import { ATLAS_SYSTEM_PROMPT } from "./ai/prompts.js";
+
+
+// ============================================================
+// 🚦 MAIN ROUTER
+// ============================================================
 
 export async function routeUpdate(update, env) {
 
@@ -11,7 +21,9 @@ export async function routeUpdate(update, env) {
   }
 
   const chatId = message.chat.id;
-  const text = (message.text || "").trim();
+
+  const text =
+    (message.text || "").trim();
 
   if (!text) {
     return;
@@ -19,7 +31,7 @@ export async function routeUpdate(update, env) {
 
 
   // ==========================================================
-  // START
+  // 🚀 START
   // ==========================================================
 
   if (text === "/start") {
@@ -31,10 +43,10 @@ export async function routeUpdate(update, env) {
         "🚀 Atlas Content Factory فعال شد!",
         "",
         "🧠 موتور تولید محتوا آماده است.",
-        "📢 @AtlasContentFactory",
         "",
-        "/idea — ایده محتوا",
-        "/status — وضعیت Atlas"
+        "💡 /idea — ساخت ایده",
+        "📝 /post — ساخت پست",
+        "📊 /status — وضعیت سیستم"
       ].join("\n")
     );
 
@@ -43,7 +55,7 @@ export async function routeUpdate(update, env) {
 
 
   // ==========================================================
-  // STATUS
+  // 📊 STATUS
   // ==========================================================
 
   if (text === "/status") {
@@ -53,9 +65,11 @@ export async function routeUpdate(update, env) {
       chatId,
       [
         "🟢 ATLAS ONLINE",
+        "",
         "🧠 AI: Workers AI",
         "🤖 Model: Qwen3",
-        "📡 Telegram: Connected"
+        "📡 Telegram: Connected",
+        "🏭 Content Engine: Active"
       ].join("\n")
     );
 
@@ -64,7 +78,7 @@ export async function routeUpdate(update, env) {
 
 
   // ==========================================================
-  // IDEA
+  // 💡 IDEA
   // ==========================================================
 
   if (text === "/idea") {
@@ -84,21 +98,26 @@ export async function routeUpdate(update, env) {
             role: "system",
             content: ATLAS_SYSTEM_PROMPT
           },
+
           {
             role: "user",
+
             content: `
 Create one short Instagram content idea.
 
 Output ONLY the final content.
+
 No reasoning.
 No analysis.
-No explanation.
 No <think>.
 No "Okay".
 No "Answer:".
-No markdown.
+No medical claims.
+No guaranteed results.
 
-Use exactly this format:
+English + Persian audience.
+
+Use exactly:
 
 💡 IDEA
 
@@ -106,7 +125,7 @@ Use exactly this format:
 short English hook
 
 🇮🇷 هوک:
-short Persian hook
+short natural Persian hook
 
 🎬 Concept:
 one short sentence
@@ -116,10 +135,6 @@ one short sentence
 
 📝 CTA:
 one short sentence
-
-Topic: calmness, relaxation, ASMR and peaceful content.
-
-English + Persian audience.
 
 Maximum 50 words.
             `.trim()
@@ -143,7 +158,7 @@ Maximum 50 words.
       await sendMessage(
         env,
         chatId,
-        "⚠️ موتور AI فعلاً در دسترس نیست."
+        "⚠️ ساخت ایده با مشکل مواجه شد."
       );
     }
 
@@ -152,12 +167,61 @@ Maximum 50 words.
 
 
   // ==========================================================
-  // UNKNOWN COMMAND
+  // 📝 POST
+  // ==========================================================
+
+  if (text === "/post") {
+
+    await sendMessage(
+      env,
+      chatId,
+      "📝 در حال ساخت پست..."
+    );
+
+    try {
+
+      const post = await generatePost(
+        env
+      );
+
+      await sendMessage(
+        env,
+        chatId,
+        post
+      );
+
+    } catch (error) {
+
+      console.error(
+        "POST_ERROR:",
+        error?.stack || error
+      );
+
+      await sendMessage(
+        env,
+        chatId,
+        "⚠️ ساخت پست با مشکل مواجه شد."
+      );
+    }
+
+    return;
+  }
+
+
+  // ==========================================================
+  // ❓ UNKNOWN COMMAND
   // ==========================================================
 
   await sendMessage(
     env,
     chatId,
-    "🤖 دستور ناشناخته است.\n\nاز /start استفاده کن."
+    [
+      "🤖 دستور ناشناخته است.",
+      "",
+      "دستورات موجود:",
+      "/idea",
+      "/post",
+      "/status"
+    ].join("\n")
   );
 }
