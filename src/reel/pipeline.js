@@ -1,6 +1,6 @@
 // ============================================================
 // 🎬 ATLAS REEL PIPELINE
-// Idea → Post → Image → Motion → Video
+// Idea → Post → Image → Hook → Motion → Video
 // ============================================================
 
 import {
@@ -53,25 +53,30 @@ async function saveJob(
 
 
   await env.ATLAS_KV.put(
+
     getReelKey(chatId),
 
     JSON.stringify({
+
       ...data,
+
       updatedAt:
         Date.now()
+
     }),
 
     {
       expirationTtl:
         86400
     }
+
   );
 
 }
 
 
 // ============================================================
-// 📊 PROGRESS
+// 📊 PROGRESS MESSAGE
 // ============================================================
 
 async function progress(
@@ -96,6 +101,101 @@ async function progress(
     );
 
   }
+
+}
+
+
+// ============================================================
+// 🎯 GET BEST HOOK
+// ============================================================
+
+function getHook(
+  idea
+) {
+
+  const candidates = [
+
+    idea?.hook_en,
+
+    idea?.hook,
+
+    idea?.title,
+
+    idea?.headline
+
+  ];
+
+
+  for (
+    const candidate of candidates
+  ) {
+
+    if (
+      candidate &&
+      String(candidate).trim()
+    ) {
+
+      return String(
+        candidate
+      ).trim();
+
+    }
+
+  }
+
+
+  return "YOUR MIND NEEDS A BREAK.";
+
+}
+
+
+// ============================================================
+// 🖼️ BUILD IMAGE PROMPT
+// ============================================================
+
+function buildImagePrompt(
+  idea
+) {
+
+  const visual =
+    idea?.visual ||
+    idea?.concept ||
+    "peaceful nature scene";
+
+
+  return `
+
+Create a cinematic vertical Instagram Reel scene.
+
+Main visual:
+${visual}
+
+Concept:
+${idea?.concept || ""}
+
+Atmosphere:
+peaceful, calming, relaxing, natural,
+cinematic realistic photography,
+soft natural lighting,
+subtle depth of field.
+
+Composition:
+vertical 9:16,
+strong visual subject,
+clean center composition,
+Instagram Reel friendly framing.
+
+IMPORTANT:
+The image itself must contain NO text.
+Do not generate letters.
+Do not generate words.
+Do not generate logos.
+Do not generate watermarks.
+
+The Hook will be added later by the
+video renderer.
+
+`.trim();
 
 }
 
@@ -154,7 +254,7 @@ export async function createReel(
         "🎬 ATLAS REEL FACTORY",
         "",
         "🧠 مرحله 1/5",
-        "در حال ساخت ایده..."
+        "در حال ساخت ایده و Hook..."
       ].join("\n")
     );
 
@@ -165,8 +265,18 @@ export async function createReel(
       );
 
 
+    const hook =
+      getHook(
+        idea
+      );
+
+
     job.idea =
       idea;
+
+
+    job.hook =
+      hook;
 
 
     await saveJob(
@@ -197,7 +307,7 @@ export async function createReel(
 
       [
         "📝 مرحله 2/5",
-        "در حال ساخت Caption و محتوای Reel..."
+        "در حال ساخت Caption..."
       ].join("\n")
     );
 
@@ -212,7 +322,7 @@ export async function createReel(
 
 
     // ========================================================
-    // QUALITY CHECK
+    // 🛡️ QUALITY CHECK
     // ========================================================
 
     let quality =
@@ -222,7 +332,9 @@ export async function createReel(
       );
 
 
-    if (!quality.approved) {
+    if (
+      !quality.approved
+    ) {
 
       console.log(
         "ATLAS_REEL_QUALITY_RETRY:",
@@ -237,6 +349,7 @@ export async function createReel(
           env,
 
           [
+
             JSON.stringify(
               idea
             ),
@@ -246,7 +359,8 @@ export async function createReel(
             "QUALITY ISSUES:",
 
             JSON.stringify(
-              quality.issues || []
+              quality.issues ||
+              []
             ),
 
             "",
@@ -254,7 +368,8 @@ export async function createReel(
             "SUGGESTED FIXES:",
 
             JSON.stringify(
-              quality.fixes || []
+              quality.fixes ||
+              []
             )
 
           ].join("\n")
@@ -306,48 +421,17 @@ export async function createReel(
 
       [
         "🖼️ مرحله 3/5",
-        "در حال ساخت تصویر سینمایی 9:16..."
+        "در حال ساخت تصویر مرتبط با Hook...",
+        "",
+        `🎯 ${hook}`
       ].join("\n")
     );
 
 
-    const visual =
-      idea?.visual ||
-      idea?.concept ||
-      idea?.hook_en ||
-      "peaceful nature scene";
-
-
-    const imagePrompt = `
-
-Create a cinematic vertical Instagram Reel scene.
-
-Main visual:
-${visual}
-
-Concept:
-${idea?.concept || ""}
-
-Atmosphere:
-peaceful, calming, relaxing, natural,
-cinematic realistic photography,
-soft natural lighting,
-subtle depth of field.
-
-Composition:
-vertical 9:16,
-strong visual subject,
-Instagram Reel friendly framing.
-
-Do not include:
-text,
-letters,
-logos,
-watermarks,
-UI,
-borders.
-
-`.trim();
+    const imagePrompt =
+      buildImagePrompt(
+        idea
+      );
 
 
     const imageBuffer =
@@ -369,7 +453,7 @@ borders.
 
 
     // ========================================================
-    // 4️⃣ VIDEO / MOTION
+    // 4️⃣ VIDEO + HOOK
     // ========================================================
 
     job.status =
@@ -389,9 +473,10 @@ borders.
 
       [
         "🎥 مرحله 4/5",
-        "در حال اعمال Motion و ساخت ویدیو...",
+        "در حال ساخت ویدیو...",
         "",
         "🔍 Slow Zoom",
+        "📝 Hook Overlay",
         "⏱️ 10 seconds"
       ].join("\n")
     );
@@ -399,16 +484,24 @@ borders.
 
     const rendered =
       await renderImageToVideo(
+
         env,
+
         imageBuffer,
 
         {
+
           duration:
             10,
 
           motion:
-            "zoom_in"
+            "zoom_in",
+
+          hook:
+            hook
+
         }
+
       );
 
 
@@ -444,28 +537,36 @@ borders.
 
       [
         "📦 مرحله 5/5",
-        "Reel آماده است.",
+        "Reel آماده شد.",
         "",
-        "📤 در حال ارسال فایل..."
+        "📤 در حال ارسال..."
       ].join("\n")
     );
 
 
+    // ========================================================
+    // SEND VIDEO
+    // ========================================================
+
     await sendVideo(
       env,
       chatId,
+
       rendered.videoUrl,
 
       [
         "🎬 ATLAS REEL READY",
         "",
-        `🎯 ${idea?.hook_en || "Calm Nature"}`,
+        `🎯 ${hook}`,
         "",
         "⏱️ 10 seconds",
         "📱 1080×1920",
         "🔍 Slow Zoom",
         "",
+        "━━━━━━━━━━━━━━",
+        "",
         "📝 CAPTION",
+        "",
         post
       ].join("\n")
     );
@@ -490,12 +591,25 @@ borders.
     );
 
 
+    console.log(
+      "ATLAS_REEL_COMPLETED:",
+      JSON.stringify({
+        chatId,
+        hook,
+        duration:
+          10
+      })
+    );
+
+
     return {
 
       success:
         true,
 
       idea,
+
+      hook,
 
       post,
 
@@ -508,7 +622,8 @@ borders.
 
     console.error(
       "ATLAS_REEL_PIPELINE_ERROR:",
-      error?.stack || error
+      error?.stack ||
+      error
     );
 
 
