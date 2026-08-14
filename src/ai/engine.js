@@ -1,31 +1,21 @@
 import { CONFIG } from "../config.js";
 
 export async function generateAI(env, messages) {
-
   if (!env.AI) {
     throw new Error("CLOUDFLARE_AI_BINDING_MISSING");
   }
 
   const prompt = messages
-    .map((message) => {
-      return `${message.role}: ${message.content}`;
-    })
+    .map((message) => `${message.role}: ${message.content}`)
     .join("\n\n");
 
   try {
-
-    const result = await env.AI.run(
-      CONFIG.model,
-      {
-        prompt,
-
-        max_tokens: CONFIG.maxTokens,
-
-        temperature: CONFIG.temperature,
-
-        top_p: 0.85
-      }
-    );
+    const result = await env.AI.run(CONFIG.model, {
+      prompt,
+      max_tokens: CONFIG.maxTokens,
+      temperature: CONFIG.temperature,
+      top_p: 0.85
+    });
 
     console.log(
       "ATLAS_AI_RESULT:",
@@ -43,18 +33,9 @@ export async function generateAI(env, messages) {
       );
     }
 
-    answer = cleanAIOutput(answer);
-
-    if (!answer) {
-      throw new Error(
-        "CLOUDFLARE_AI_EMPTY_AFTER_CLEAN"
-      );
-    }
-
-    return answer;
+    return cleanAIOutput(answer);
 
   } catch (error) {
-
     console.error(
       "CLOUDFLARE_AI_ERROR:",
       error?.stack || error
@@ -66,32 +47,40 @@ export async function generateAI(env, messages) {
 
 
 // ============================================================
-// 🧹 CLEAN AI OUTPUT
+// CLEAN ATLAS OUTPUT
 // ============================================================
 
 function cleanAIOutput(text) {
-
   let result = String(text).trim();
 
-  // Remove <think>...</think>
+  // Remove Qwen thinking blocks
   result = result.replace(
     /<think>[\s\S]*?<\/think>/gi,
     ""
   );
 
-  // Remove possible Assistant prefix
+  // Remove common reasoning text
+  const markers = [
+    /^okay,?\s+the user wants[\s\S]*?(?=\n(?:answer\s*:|1\.\s*\*\*))/i,
+    /^the user wants[\s\S]*?(?=\n(?:answer\s*:|1\.\s*\*\*))/i,
+    /^let me start[\s\S]*?(?=\n(?:answer\s*:|1\.\s*\*\*))/i,
+    /^first,?\s+the english hook[\s\S]*?(?=\n(?:answer\s*:|1\.\s*\*\*))/i
+  ];
+
+  for (const marker of markers) {
+    result = result.replace(marker, "");
+  }
+
   result = result.replace(
-    /^assistant\s*:\s*/i,
+    /^\s*answer\s*:\s*/i,
     ""
   );
 
-  // Remove Atlas prefix
   result = result.replace(
-    /^(atlas|atlas bot)\s*:\s*/i,
+    /^\s*(assistant|atlas|atlas bot)\s*:\s*/i,
     ""
   );
 
-  // Remove excessive empty lines
   result = result.replace(
     /\n{3,}/g,
     "\n\n"
