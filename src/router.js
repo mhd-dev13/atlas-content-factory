@@ -2,7 +2,12 @@
 // 🤖 ATLAS CONTENT FACTORY — ROUTER
 // ============================================================
 
-import { sendMessage, sendPhoto } from "./telegram/api.js";
+import {
+  sendMessage,
+  sendVideo
+} from "./telegram/api.js";
+
+import { generateAI } from "./ai/engine.js";
 
 import {
   generateIdea,
@@ -12,6 +17,10 @@ import {
 import { checkContent } from "./content/quality.js";
 
 import { generateImage } from "./video/image.js";
+
+import {
+  renderImageToVideo
+} from "./video/renderer.js";
 
 
 // ============================================================
@@ -73,7 +82,7 @@ export async function routeUpdate(
         "",
         "💡 /idea",
         "📝 /post",
-        "🎨 /image",
+        "🎬 /video",
         "📊 /status",
         "",
         "ابتدا /idea را بزن و بعد /post."
@@ -101,7 +110,7 @@ export async function routeUpdate(
         "🧠 AI Engine: ACTIVE",
         "🏭 Content Engine: ACTIVE",
         "🛡️ Quality Engine: ACTIVE",
-        "🎨 Image Engine: ACTIVE",
+        "🎬 Video Engine: ACTIVE",
         "📡 Telegram: CONNECTED"
       ].join("\n")
     );
@@ -126,10 +135,12 @@ export async function routeUpdate(
     try {
 
       const idea =
-        await generateIdea(
-          env
-        );
+        await generateIdea(env);
 
+
+      // ------------------------------------------------------
+      // Save latest idea
+      // ------------------------------------------------------
 
       if (env.ATLAS_KV) {
 
@@ -138,32 +149,50 @@ export async function routeUpdate(
 
           JSON.stringify({
             idea,
-            createdAt: Date.now()
+            createdAt:
+              Date.now()
           }),
 
           {
-            expirationTtl: 86400
+            expirationTtl:
+              86400
           }
         );
 
       }
 
 
+      // ------------------------------------------------------
+      // Format idea
+      // ------------------------------------------------------
+
       const output = [
 
         "💡 ATLAS IDEA",
         "",
+
         `🇬🇧 Hook: ${idea.hook_en}`,
+
         "",
+
         `🇮🇷 هوک: ${idea.hook_fa}`,
+
         "",
+
         `🎬 Concept: ${idea.concept}`,
+
         "",
+
         `🎨 Visual: ${idea.visual}`,
+
         "",
+
         `📝 CTA: ${idea.cta}`,
+
         "",
+
         "━━━━━━━━━━━━━━",
+
         "📝 حالا /post را بزن."
 
       ].join("\n");
@@ -212,7 +241,12 @@ export async function routeUpdate(
 
     try {
 
-      let sourceIdea = "";
+      // ------------------------------------------------------
+      // Load latest idea
+      // ------------------------------------------------------
+
+      let sourceIdea =
+        "";
 
 
       if (env.ATLAS_KV) {
@@ -236,6 +270,10 @@ export async function routeUpdate(
       }
 
 
+      // ------------------------------------------------------
+      // If no idea exists
+      // ------------------------------------------------------
+
       if (!sourceIdea) {
 
         await sendMessage(
@@ -253,12 +291,20 @@ export async function routeUpdate(
       }
 
 
+      // ------------------------------------------------------
+      // Generate post
+      // ------------------------------------------------------
+
       let post =
         await generatePost(
           env,
           sourceIdea
         );
 
+
+      // ------------------------------------------------------
+      // Quality check
+      // ------------------------------------------------------
 
       const quality =
         await checkContent(
@@ -269,9 +315,15 @@ export async function routeUpdate(
 
       console.log(
         "ATLAS_POST_QUALITY:",
-        JSON.stringify(quality)
+        JSON.stringify(
+          quality
+        )
       );
 
+
+      // ------------------------------------------------------
+      // First quality failure
+      // ------------------------------------------------------
 
       if (!quality.approved) {
 
@@ -312,6 +364,10 @@ export async function routeUpdate(
           );
 
 
+        // ----------------------------------------------------
+        // Second quality check
+        // ----------------------------------------------------
+
         const secondQuality =
           await checkContent(
             env,
@@ -321,11 +377,19 @@ export async function routeUpdate(
 
         console.log(
           "ATLAS_POST_QUALITY_RETRY:",
-          JSON.stringify(secondQuality)
+          JSON.stringify(
+            secondQuality
+          )
         );
 
 
-        if (!secondQuality.approved) {
+        // ----------------------------------------------------
+        // If still bad
+        // ----------------------------------------------------
+
+        if (
+          !secondQuality.approved
+        ) {
 
           await sendMessage(
             env,
@@ -343,6 +407,10 @@ export async function routeUpdate(
 
       }
 
+
+      // ------------------------------------------------------
+      // Send final post
+      // ------------------------------------------------------
 
       await sendMessage(
         env,
@@ -366,7 +434,7 @@ export async function routeUpdate(
         [
           "⚠️ ساخت پست با مشکل مواجه شد.",
           "",
-          "دوباره /post را امتحان کن."
+          `🔧 ${error?.message || error}`
         ].join("\n")
       );
 
@@ -378,62 +446,116 @@ export async function routeUpdate(
 
 
   // ==========================================================
-  // 🎨 IMAGE TEST
+  // 🎬 VIDEO
   // ==========================================================
 
-  if (text === "/image") {
+  if (text === "/video") {
 
     await sendMessage(
       env,
       chatId,
-      "🎨 در حال ساخت تصویر آزمایشی..."
+
+      [
+        "🎬 ATLAS VIDEO ENGINE",
+        "",
+        "🖼️ مرحله 1/2 — در حال ساخت تصویر..."
+      ].join("\n")
     );
 
 
     try {
 
+      // ------------------------------------------------------
+      // Generate image
+      // ------------------------------------------------------
+
       const imagePrompt = `
-Peaceful cinematic forest at dawn,
-soft mist between trees,
-gentle rain falling on green leaves,
-warm natural morning light,
-small water droplets on leaves,
-calm atmospheric scene,
-realistic photography,
-beautiful depth of field,
-vertical composition for Instagram Reel,
-no people,
-no text,
-no logo,
-no watermark
+A peaceful cinematic nature scene for a
+10-second vertical Instagram Reel.
+
+Soft green leaves moving gently in a light breeze,
+warm natural sunlight filtering through the trees,
+subtle depth of field,
+calm atmospheric feeling,
+realistic photography.
+
+No people.
+No text.
+No logo.
+No watermark.
       `.trim();
 
 
-      const image =
+      const imageBuffer =
         await generateImage(
           env,
           imagePrompt
         );
 
 
-      await sendPhoto(
+      // ------------------------------------------------------
+      // Rendering message
+      // ------------------------------------------------------
+
+      await sendMessage(
         env,
         chatId,
-        image,
-        "🎨 ATLAS IMAGE TEST\n🌿 Calm Nature"
+
+        [
+          "🎬 مرحله 2/2",
+          "",
+          "⚙️ در حال تبدیل تصویر به ویدیوی ۱۰ ثانیه‌ای...",
+          "",
+          "⏳ ممکن است کمی زمان ببرد."
+        ].join("\n")
+      );
+
+
+      // ------------------------------------------------------
+      // Render video
+      // ------------------------------------------------------
+
+      const rendered =
+        await renderImageToVideo(
+          env,
+          imageBuffer,
+          {
+            duration:
+              10
+          }
+        );
+
+
+      // ------------------------------------------------------
+      // Send video
+      // ------------------------------------------------------
+
+      await sendVideo(
+        env,
+        chatId,
+        rendered.videoUrl,
+
+        [
+          "🎬 ATLAS REEL",
+          "",
+          "🌿 Calm Nature",
+          "⏱ 10 seconds"
+        ].join("\n")
       );
 
 
       console.log(
-        "ATLAS_IMAGE_SENT:",
-        chatId
+        "ATLAS_VIDEO_SENT:",
+        JSON.stringify(
+          rendered
+        )
       );
 
 
     } catch (error) {
 
       console.error(
-        "IMAGE_ERROR:",
+        "VIDEO_ERROR:",
         error?.stack || error
       );
 
@@ -443,9 +565,9 @@ no watermark
         chatId,
 
         [
-          "⚠️ ساخت تصویر با مشکل مواجه شد.",
+          "⚠️ ساخت ویدیو با مشکل مواجه شد.",
           "",
-          `🔧 ${error?.message || "UNKNOWN_ERROR"}`
+          `🔧 ${error?.message || error}`
         ].join("\n")
       );
 
@@ -471,7 +593,7 @@ no watermark
       "",
       "/idea — ساخت ایده",
       "/post — ساخت پست",
-      "/image — ساخت تصویر",
+      "/video — ساخت ویدیو",
       "/status — وضعیت سیستم"
     ].join("\n")
   );
