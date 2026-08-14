@@ -1,6 +1,40 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
+
   "name": "atlas-content-factory",
+
   "main": "src/index.js",
-  "compatibility_date": "2026-08-14"
+
+  "compatibility_date": "2026-08-14",
+
+  // =========================================================
+  // 🤖 CLOUDFLARE WORKERS AI
+  // =========================================================
+
+  "ai": {
+    "binding": "AI"
+  },
+
+  // =========================================================
+  // 🔐 VARIABLES / SECRETS
+  // =========================================================
+
+  /*
+   * Secrets مثل:
+   *
+   * TELEGRAM_BOT_TOKEN
+   * OPENAI_API_KEY
+   *
+   * داخل Dashboard تنظیم شده‌اند.
+   *
+   * اینجا مقدار Secret قرار نمی‌دهیم.
+   */
+
+  // =========================================================
+  // ⚙️ OBSERVABILITY
+  // =========================================================
+
+  "observability": {
+    "enabled": true
+  }
 }
