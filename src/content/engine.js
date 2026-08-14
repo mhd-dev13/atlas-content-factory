@@ -3,13 +3,22 @@
 // ============================================================
 
 import { generateAI } from "../ai/engine.js";
+import { checkContent } from "./quality.js";
 
 
 // ============================================================
 // 📝 GENERATE POST
 // ============================================================
 
-export async function generatePost(env) {
+export async function generatePost(
+  env,
+  sourceIdea = ""
+) {
+
+  const idea =
+    sourceIdea?.trim() ||
+    "Create a fresh calm and relaxing ASMR idea.";
+
 
   const messages = [
 
@@ -19,32 +28,41 @@ export async function generatePost(env) {
       content: `
 You are Atlas Content Factory.
 
-Create social media content for a bilingual
-English + Persian Instagram page.
+Create ONE bilingual Instagram post.
 
-Topic:
-calmness, relaxation, ASMR, peaceful moments.
+Main topics:
+
+calmness
+relaxation
+ASMR
+peaceful moments
+mindfulness
 
 IMPORTANT:
 
 Return ONLY ONE valid JSON object.
 
-Do not write anything before the JSON.
-Do not write anything after the JSON.
-Do not explain.
-Do not reason.
-Do not use markdown.
-Do not use <think>.
-Do not output multiple versions.
+No explanation.
+No reasoning.
+No <think>.
+No markdown.
+No multiple versions.
 
-The Persian must sound like natural modern Persian.
+The Persian must be natural modern Persian.
+
 Never translate English word-by-word.
+
+The Persian should sound like something
+a real Persian-speaking Instagram creator
+would write.
 
 Avoid medical claims.
 Avoid treatment claims.
 Avoid guaranteed results.
 
-Use this exact JSON structure:
+Keep everything concise.
+
+JSON structure:
 
 {
   "hook_en": "",
@@ -55,8 +73,6 @@ Use this exact JSON structure:
   "cta_fa": "",
   "hashtags": []
 }
-
-Keep the content short.
       `.trim()
     },
 
@@ -64,21 +80,21 @@ Keep the content short.
       role: "user",
 
       content: `
-Create ONE Instagram post.
+Create one Instagram post based specifically
+on this idea:
+
+${idea}
+
+Do not change the topic.
 
 English:
-- natural
-- emotional
-- short
-- suitable for Instagram
+Natural and engaging.
 
 Persian:
-- natural
-- conversational
-- NOT literal translation
-- grammatically correct
+Natural and conversational.
+Do NOT translate literally.
 
-Use 5 to 8 hashtags.
+Use 5 to 8 relevant hashtags.
 
 Return JSON only.
       `.trim()
@@ -87,69 +103,184 @@ Return JSON only.
   ];
 
 
-  const raw = await generateAI(
-    env,
-    messages
-  );
+  const raw =
+    await generateAI(
+      env,
+      messages
+    );
+
+
+  const post =
+    extractPostJSON(raw);
+
 
   return formatPost(
-    extractJSON(raw)
+    post
   );
 }
 
 
 // ============================================================
-// 🧠 EXTRACT FIRST VALID JSON
+// 💡 GENERATE IDEA
 // ============================================================
 
-function extractJSON(text) {
+export async function generateIdea(env) {
 
-  if (!text) {
-    throw new Error(
-      "POST_EMPTY_RESPONSE"
+  const messages = [
+
+    {
+      role: "system",
+
+      content: `
+You are Atlas Content Factory.
+
+Create ONE short Instagram content idea.
+
+Topic:
+calmness, relaxation, ASMR and peaceful content.
+
+Return ONLY valid JSON.
+
+No reasoning.
+No analysis.
+No <think>.
+No markdown.
+
+JSON:
+
+{
+  "hook_en": "",
+  "hook_fa": "",
+  "concept": "",
+  "visual": "",
+  "cta": ""
+}
+      `.trim()
+    },
+
+    {
+      role: "user",
+
+      content: `
+Create one original Instagram idea.
+
+Keep it short.
+
+English must sound natural.
+
+Persian must sound like natural
+modern Persian, not a literal translation.
+
+Return JSON only.
+      `.trim()
+    }
+
+  ];
+
+
+  const raw =
+    await generateAI(
+      env,
+      messages
     );
-  }
-
-  let cleaned =
-    String(text)
-      .trim()
-      .replace(
-        /<think>[\s\S]*?<\/think>/gi,
-        ""
-      )
-      .trim();
 
 
-  // ----------------------------------------------------------
-  // Find first JSON object
-  // ----------------------------------------------------------
+  return extractIdeaJSON(
+    raw
+  );
+}
+
+
+// ============================================================
+// 🧠 EXTRACT POST JSON
+// ============================================================
+
+function extractPostJSON(text) {
+
+  const cleaned =
+    cleanRaw(text);
+
+  const json =
+    extractJSONObject(
+      cleaned
+    );
+
+
+  validatePost(json);
+
+
+  return json;
+}
+
+
+// ============================================================
+// 🧠 EXTRACT IDEA JSON
+// ============================================================
+
+function extractIdeaJSON(text) {
+
+  const cleaned =
+    cleanRaw(text);
+
+  const json =
+    extractJSONObject(
+      cleaned
+    );
+
+
+  return json;
+}
+
+
+// ============================================================
+// 🧹 CLEAN RAW
+// ============================================================
+
+function cleanRaw(text) {
+
+  return String(text || "")
+    .replace(
+      /<think>[\s\S]*?<\/think>/gi,
+      ""
+    )
+    .replace(
+      /<\/think>/gi,
+      ""
+    )
+    .trim();
+}
+
+
+// ============================================================
+// 📦 EXTRACT OBJECT
+// ============================================================
+
+function extractJSONObject(text) {
 
   const start =
-    cleaned.indexOf("{");
+    text.indexOf("{");
 
   if (start === -1) {
+
     throw new Error(
-      "POST_JSON_NOT_FOUND"
+      "CONTENT_JSON_NOT_FOUND"
     );
   }
 
-
-  // ----------------------------------------------------------
-  // Find matching closing brace
-  // ----------------------------------------------------------
 
   let depth = 0;
   let inString = false;
   let escaped = false;
 
+
   for (
     let i = start;
-    i < cleaned.length;
+    i < text.length;
     i++
   ) {
 
     const char =
-      cleaned[i];
+      text[i];
 
 
     if (
@@ -189,13 +320,15 @@ function extractJSON(text) {
 
       depth--;
 
+
       if (depth === 0) {
 
         const jsonText =
-          cleaned.slice(
+          text.slice(
             start,
             i + 1
           );
+
 
         try {
 
@@ -203,15 +336,10 @@ function extractJSON(text) {
             jsonText
           );
 
-        } catch (error) {
-
-          console.error(
-            "POST_JSON_PARSE_ERROR:",
-            jsonText
-          );
+        } catch {
 
           throw new Error(
-            "POST_INVALID_JSON"
+            "CONTENT_JSON_INVALID"
           );
         }
       }
@@ -220,18 +348,18 @@ function extractJSON(text) {
 
 
   throw new Error(
-    "POST_JSON_INCOMPLETE"
+    "CONTENT_JSON_INCOMPLETE"
   );
 }
 
 
 // ============================================================
-// 🧹 VALIDATE CONTENT
+// 🛡️ VALIDATE POST
 // ============================================================
 
 function validatePost(post) {
 
-  const required = [
+  const fields = [
     "hook_en",
     "caption_en",
     "cta_en",
@@ -242,7 +370,7 @@ function validatePost(post) {
 
 
   for (
-    const field of required
+    const field of fields
   ) {
 
     if (
@@ -265,42 +393,38 @@ function validatePost(post) {
 
     post.hashtags = [];
   }
-
-
-  return post;
 }
 
 
 // ============================================================
-// 📦 FORMAT TELEGRAM POST
+// 🧾 FORMAT POST
 // ============================================================
 
 function formatPost(post) {
 
-  post =
-    validatePost(post);
-
-
   const hashtags =
     post.hashtags
-      .map(tag => {
+      .map(
+        tag => {
 
-        let value =
-          String(tag)
-            .trim();
+          let value =
+            String(tag).trim();
 
-        if (
-          value &&
-          !value.startsWith("#")
-        ) {
 
-          value =
-            "#" + value;
+          if (
+            value &&
+            !value.startsWith("#")
+          ) {
+
+            value =
+              "#" + value;
+          }
+
+
+          return value;
+
         }
-
-        return value;
-
-      })
+      )
       .filter(Boolean)
       .slice(0, 8)
       .join(" ");
