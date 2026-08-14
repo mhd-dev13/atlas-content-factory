@@ -3,6 +3,7 @@ import { generateAI } from "./ai/engine.js";
 import { ATLAS_SYSTEM_PROMPT } from "./ai/prompts.js";
 
 export async function routeUpdate(update, env) {
+
   const message = update?.message;
 
   if (!message?.chat?.id) {
@@ -18,10 +19,11 @@ export async function routeUpdate(update, env) {
 
 
   // ==========================================================
-  // /START
+  // START
   // ==========================================================
 
   if (text === "/start") {
+
     await sendMessage(
       env,
       chatId,
@@ -41,10 +43,11 @@ export async function routeUpdate(update, env) {
 
 
   // ==========================================================
-  // /STATUS
+  // STATUS
   // ==========================================================
 
   if (text === "/status") {
+
     await sendMessage(
       env,
       chatId,
@@ -61,7 +64,7 @@ export async function routeUpdate(update, env) {
 
 
   // ==========================================================
-  // /IDEA
+  // IDEA
   // ==========================================================
 
   if (text === "/idea") {
@@ -84,45 +87,41 @@ export async function routeUpdate(update, env) {
           {
             role: "user",
             content: `
-Create ONE short Instagram content idea.
+Create one short Instagram content idea.
 
-IMPORTANT:
-- Return ONLY the final answer.
-- Do NOT show reasoning.
-- Do NOT explain your thinking.
-- Do NOT use <think>.
-- Do NOT write "Okay".
-- Do NOT write "The user wants".
-- Do NOT write "Answer:".
-- No medical claims.
-- No guaranteed results.
+Output ONLY the final content.
+No reasoning.
+No analysis.
+No explanation.
+No <think>.
+No "Okay".
+No "Answer:".
+No markdown.
 
-Target audience:
-English + Persian.
-
-Return EXACTLY:
+Use exactly this format:
 
 💡 IDEA
 
 🇬🇧 Hook:
-[short English hook]
+short English hook
 
 🇮🇷 هوک:
-[short Persian hook]
+short Persian hook
 
 🎬 Concept:
-[one short sentence]
+one short sentence
 
 🎨 Visual:
-[one short sentence]
+one short sentence
 
 📝 CTA:
-[short CTA]
+one short sentence
 
-Topic:
-calmness / relaxation / ASMR / peaceful content.
+Topic: calmness, relaxation, ASMR and peaceful content.
 
-Maximum 80 words.
+English + Persian audience.
+
+Maximum 50 words.
             `.trim()
           }
         ]
