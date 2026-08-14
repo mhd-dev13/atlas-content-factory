@@ -1,5 +1,5 @@
 import { sendMessage } from "./telegram/api.js";
-import { askOpenAI } from "./ai/openai.js";
+import { generateAI } from "./ai/engine.js";
 import { ATLAS_SYSTEM_PROMPT } from "./ai/prompts.js";
 
 export async function routeUpdate(update, env) {
@@ -53,7 +53,7 @@ export async function routeUpdate(update, env) {
     );
 
     try {
-      const answer = await askOpenAI(env, [
+      const answer = await generateAI(env, [
         {
           role: "system",
           content: ATLAS_SYSTEM_PROMPT
