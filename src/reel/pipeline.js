@@ -1,16 +1,13 @@
 // ============================================================
 // 🎬 ATLAS REEL PIPELINE
-// Idea → Post → Image → Hook → Motion → Video
+// One Click:
+// Idea → Reel Director → Hook → Image → Video → Caption
 // ============================================================
 
 import {
   generateIdea,
-  generatePost
+  generateReel
 } from "../content/engine.js";
-
-import {
-  checkContent
-} from "../content/quality.js";
 
 import {
   generateImage
@@ -51,7 +48,6 @@ async function saveJob(
     return;
   }
 
-
   await env.ATLAS_KV.put(
 
     getReelKey(chatId),
@@ -76,7 +72,7 @@ async function saveJob(
 
 
 // ============================================================
-// 📊 PROGRESS MESSAGE
+// 📡 PROGRESS
 // ============================================================
 
 async function progress(
@@ -110,18 +106,19 @@ async function progress(
 // ============================================================
 
 function getHook(
+  reel,
   idea
 ) {
 
   const candidates = [
 
+    reel?.hook,
+
+    reel?.on_screen_text?.en,
+
     idea?.hook_en,
 
-    idea?.hook,
-
-    idea?.title,
-
-    idea?.headline
+    reel?.title
 
   ];
 
@@ -150,52 +147,237 @@ function getHook(
 
 
 // ============================================================
+// 🎨 GET VISUAL
+// ============================================================
+
+function getVisual(
+  reel,
+  idea
+) {
+
+  // ----------------------------------------------------------
+  // Prefer first Reel scene
+  // ----------------------------------------------------------
+
+  if (
+    reel?.scenes?.[0]?.visual
+  ) {
+
+    return String(
+      reel.scenes[0].visual
+    ).trim();
+
+  }
+
+
+  // ----------------------------------------------------------
+  // Fallback to original idea
+  // ----------------------------------------------------------
+
+  if (
+    idea?.visual
+  ) {
+
+    return String(
+      idea.visual
+    ).trim();
+
+  }
+
+
+  if (
+    idea?.concept
+  ) {
+
+    return String(
+      idea.concept
+    ).trim();
+
+  }
+
+
+  return "A peaceful cinematic nature scene.";
+
+}
+
+
+// ============================================================
 // 🖼️ BUILD IMAGE PROMPT
 // ============================================================
 
 function buildImagePrompt(
+  reel,
   idea
 ) {
 
   const visual =
-    idea?.visual ||
-    idea?.concept ||
-    "peaceful nature scene";
+    getVisual(
+      reel,
+      idea
+    );
+
+
+  const camera =
+    reel?.scenes?.[0]?.camera ||
+    "cinematic static shot";
+
+
+  const motion =
+    reel?.scenes?.[0]?.motion ||
+    "subtle natural movement";
 
 
   return `
 
-Create a cinematic vertical Instagram Reel scene.
+Create ONE cinematic vertical Instagram Reel
+background image.
 
-Main visual:
+VISUAL:
 ${visual}
 
-Concept:
-${idea?.concept || ""}
+CAMERA:
+${camera}
 
-Atmosphere:
-peaceful, calming, relaxing, natural,
+MOTION CONCEPT:
+${motion}
+
+STYLE:
+
 cinematic realistic photography,
+high visual quality,
 soft natural lighting,
-subtle depth of field.
+peaceful atmosphere,
+calming mood,
+subtle depth of field,
+natural colors,
+premium Instagram aesthetic.
 
-Composition:
-vertical 9:16,
-strong visual subject,
-clean center composition,
-Instagram Reel friendly framing.
+FORMAT:
+
+Vertical 9:16.
+Designed for 1080x1920 video.
+Strong visual composition.
+Keep the main subject visually interesting.
 
 IMPORTANT:
-The image itself must contain NO text.
-Do not generate letters.
-Do not generate words.
-Do not generate logos.
-Do not generate watermarks.
 
-The Hook will be added later by the
-video renderer.
+DO NOT generate any text.
+
+DO NOT generate letters.
+
+DO NOT generate words.
+
+DO NOT generate subtitles.
+
+DO NOT generate logos.
+
+DO NOT generate watermarks.
+
+DO NOT generate UI.
+
+The Hook will be added later
+by the video renderer.
 
 `.trim();
+
+}
+
+
+// ============================================================
+// 📝 BUILD FINAL CAPTION
+// ============================================================
+
+function buildCaption(
+  reel
+) {
+
+  const english =
+    reel?.caption_en ||
+    "";
+
+
+  const persian =
+    reel?.caption_fa ||
+    "";
+
+
+  const cta =
+    reel?.cta ||
+    "";
+
+
+  const hashtags =
+    Array.isArray(
+      reel?.hashtags
+    )
+
+      ? reel.hashtags
+
+          .map(
+            tag => {
+
+              let value =
+                String(
+                  tag || ""
+                ).trim();
+
+
+              if (
+                value &&
+                !value.startsWith("#")
+              ) {
+
+                value =
+                  "#" + value;
+
+              }
+
+
+              return value;
+
+            }
+          )
+
+          .filter(Boolean)
+
+          .slice(0, 8)
+
+          .join(" ")
+
+      : "";
+
+
+  return [
+
+    "🇬🇧",
+    english,
+
+    "",
+
+    "🇮🇷",
+    persian,
+
+    "",
+
+    cta
+      ? `✨ ${cta}`
+      : "",
+
+    "",
+
+    hashtags
+
+  ]
+
+    .filter(
+      line =>
+        line !== undefined &&
+        line !== null
+    )
+
+    .join("\n")
+
+    .trim();
 
 }
 
@@ -254,7 +436,7 @@ export async function createReel(
         "🎬 ATLAS REEL FACTORY",
         "",
         "🧠 مرحله 1/5",
-        "در حال ساخت ایده و Hook..."
+        "در حال ساخت ایده..."
       ].join("\n")
     );
 
@@ -265,18 +447,8 @@ export async function createReel(
       );
 
 
-    const hook =
-      getHook(
-        idea
-      );
-
-
     job.idea =
       idea;
-
-
-    job.hook =
-      hook;
 
 
     await saveJob(
@@ -287,11 +459,11 @@ export async function createReel(
 
 
     // ========================================================
-    // 2️⃣ POST / CAPTION
+    // 2️⃣ REEL DIRECTOR
     // ========================================================
 
     job.status =
-      "content";
+      "director";
 
 
     await saveJob(
@@ -306,14 +478,17 @@ export async function createReel(
       chatId,
 
       [
-        "📝 مرحله 2/5",
-        "در حال ساخت Caption..."
+        "🎯 مرحله 2/5",
+        "Atlas Reel Director در حال طراحی Reel...",
+        "",
+        `🇬🇧 ${idea?.hook_en || ""}`,
+        `🇮🇷 ${idea?.hook_fa || ""}`
       ].join("\n")
     );
 
 
-    let post =
-      await generatePost(
+    const reel =
+      await generateReel(
         env,
         JSON.stringify(
           idea
@@ -321,76 +496,19 @@ export async function createReel(
       );
 
 
-    // ========================================================
-    // 🛡️ QUALITY CHECK
-    // ========================================================
-
-    let quality =
-      await checkContent(
-        env,
-        post
+    const hook =
+      getHook(
+        reel,
+        idea
       );
 
 
-    if (
-      !quality.approved
-    ) {
-
-      console.log(
-        "ATLAS_REEL_QUALITY_RETRY:",
-        JSON.stringify(
-          quality
-        )
-      );
+    job.reel =
+      reel;
 
 
-      post =
-        await generatePost(
-          env,
-
-          [
-
-            JSON.stringify(
-              idea
-            ),
-
-            "",
-
-            "QUALITY ISSUES:",
-
-            JSON.stringify(
-              quality.issues ||
-              []
-            ),
-
-            "",
-
-            "SUGGESTED FIXES:",
-
-            JSON.stringify(
-              quality.fixes ||
-              []
-            )
-
-          ].join("\n")
-        );
-
-
-      quality =
-        await checkContent(
-          env,
-          post
-        );
-
-    }
-
-
-    job.post =
-      post;
-
-
-    job.quality =
-      quality;
+    job.hook =
+      hook;
 
 
     await saveJob(
@@ -421,15 +539,16 @@ export async function createReel(
 
       [
         "🖼️ مرحله 3/5",
-        "در حال ساخت تصویر مرتبط با Hook...",
+        "در حال ساخت تصویر...",
         "",
-        `🎯 ${hook}`
+        `🎯 Hook: ${hook}`
       ].join("\n")
     );
 
 
     const imagePrompt =
       buildImagePrompt(
+        reel,
         idea
       );
 
@@ -453,7 +572,7 @@ export async function createReel(
 
 
     // ========================================================
-    // 4️⃣ VIDEO + HOOK
+    // 4️⃣ VIDEO
     // ========================================================
 
     job.status =
@@ -477,9 +596,15 @@ export async function createReel(
         "",
         "🔍 Slow Zoom",
         "📝 Hook Overlay",
-        "⏱️ 10 seconds"
+        "📱 1080×1920"
       ].join("\n")
     );
+
+
+    const duration =
+      parseDuration(
+        reel?.duration
+      );
 
 
     const rendered =
@@ -491,14 +616,12 @@ export async function createReel(
 
         {
 
-          duration:
-            10,
+          duration,
 
           motion:
             "zoom_in",
 
-          hook:
-            hook
+          hook
 
         }
 
@@ -531,6 +654,12 @@ export async function createReel(
     );
 
 
+    const caption =
+      buildCaption(
+        reel
+      );
+
+
     await progress(
       env,
       chatId,
@@ -559,7 +688,7 @@ export async function createReel(
         "",
         `🎯 ${hook}`,
         "",
-        "⏱️ 10 seconds",
+        `⏱️ ${duration} seconds`,
         "📱 1080×1920",
         "🔍 Slow Zoom",
         "",
@@ -567,13 +696,13 @@ export async function createReel(
         "",
         "📝 CAPTION",
         "",
-        post
+        caption
       ].join("\n")
     );
 
 
     // ========================================================
-    // DONE
+    // COMPLETE
     // ========================================================
 
     job.status =
@@ -582,6 +711,10 @@ export async function createReel(
 
     job.completedAt =
       Date.now();
+
+
+    job.caption =
+      caption;
 
 
     await saveJob(
@@ -594,10 +727,16 @@ export async function createReel(
     console.log(
       "ATLAS_REEL_COMPLETED:",
       JSON.stringify({
+
         chatId,
+
         hook,
-        duration:
-          10
+
+        duration,
+
+        video:
+          rendered.videoUrl
+
       })
     );
 
@@ -609,9 +748,11 @@ export async function createReel(
 
       idea,
 
+      reel,
+
       hook,
 
-      post,
+      caption,
 
       rendered
 
@@ -652,7 +793,7 @@ export async function createReel(
         "",
         `🔧 ${error?.message || error}`,
         "",
-        "💡 Reel قبلی دست‌نخورده باقی می‌ماند."
+        "💡 کدها سالم هستند؛ مشکل در یکی از مراحل Pipeline رخ داده."
       ].join("\n")
     );
 
@@ -669,5 +810,45 @@ export async function createReel(
     };
 
   }
+
+}
+
+
+// ============================================================
+// ⏱️ PARSE DURATION
+// ============================================================
+
+function parseDuration(
+  value
+) {
+
+  const match =
+    String(
+      value || ""
+    ).match(
+      /(\d+)/
+    );
+
+
+  if (!match) {
+
+    return 10;
+
+  }
+
+
+  const seconds =
+    Number(
+      match[1]
+    );
+
+
+  return Math.max(
+    5,
+    Math.min(
+      30,
+      seconds
+    )
+  );
 
 }
