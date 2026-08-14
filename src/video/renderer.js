@@ -1,19 +1,6 @@
 // ============================================================
 // 🎬 ATLAS VIDEO RENDERER
-// FFmpeg Micro
-//
-// Flow:
-// ArrayBuffer Image
-//      ↓
-// Presigned Upload
-//      ↓
-// Confirm
-//      ↓
-// Transcode
-//      ↓
-// Poll
-//      ↓
-// Download URL
+// Motion Engine — Slow Zoom In
 // ============================================================
 
 const BASE_URL =
@@ -32,7 +19,7 @@ function sleep(ms) {
 
 
 // ============================================================
-// 🔐 HEADERS
+// 🔐 AUTH
 // ============================================================
 
 function authHeaders(env) {
@@ -74,11 +61,11 @@ async function uploadImage(
   }
 
 
-  const bytes =
+  const fileSize =
     imageBuffer.byteLength;
 
 
-  if (!bytes) {
+  if (!fileSize) {
 
     throw new Error(
       "IMAGE_BUFFER_EMPTY"
@@ -91,12 +78,7 @@ async function uploadImage(
     `atlas-image-${Date.now()}.png`;
 
 
-  // ----------------------------------------------------------
-  // Step 1
-  // Request presigned URL
-  // ----------------------------------------------------------
-
-  const presignedResponse =
+  const response =
     await fetch(
       `${BASE_URL}/v1/upload/presigned-url`,
       {
@@ -107,57 +89,44 @@ async function uploadImage(
 
         body:
           JSON.stringify({
-
             filename,
-
             contentType:
               "image/png",
-
-            fileSize:
-              bytes
-
+            fileSize
           })
-
       }
     );
 
 
-  const presignedData =
-    await presignedResponse.json();
+  const data =
+    await response.json();
 
 
-  if (!presignedResponse.ok) {
+  if (!response.ok) {
 
     console.error(
       "ATLAS_UPLOAD_URL_ERROR:",
-      presignedData
+      data
     );
 
     throw new Error(
-      `FFMPEG_UPLOAD_URL_FAILED:${JSON.stringify(
-        presignedData
-      )}`
+      `FFMPEG_UPLOAD_URL_FAILED:${JSON.stringify(data)}`
     );
 
   }
 
 
   const uploadUrl =
-    presignedData?.result?.uploadUrl;
+    data?.result?.uploadUrl;
 
   const serverFilename =
-    presignedData?.result?.filename;
+    data?.result?.filename;
 
 
   if (
     !uploadUrl ||
     !serverFilename
   ) {
-
-    console.error(
-      "ATLAS_UPLOAD_URL_INVALID:",
-      presignedData
-    );
 
     throw new Error(
       "FFMPEG_UPLOAD_URL_INVALID"
@@ -167,8 +136,7 @@ async function uploadImage(
 
 
   // ----------------------------------------------------------
-  // Step 2
-  // Upload binary directly
+  // Upload binary
   // ----------------------------------------------------------
 
   const uploadResponse =
@@ -190,12 +158,12 @@ async function uploadImage(
 
   if (!uploadResponse.ok) {
 
-    const uploadError =
+    const errorText =
       await uploadResponse.text();
 
     console.error(
       "ATLAS_IMAGE_UPLOAD_ERROR:",
-      uploadError
+      errorText
     );
 
     throw new Error(
@@ -206,8 +174,7 @@ async function uploadImage(
 
 
   // ----------------------------------------------------------
-  // Step 3
-  // Confirm upload
+  // Confirm
   // ----------------------------------------------------------
 
   const confirmResponse =
@@ -221,15 +188,10 @@ async function uploadImage(
 
         body:
           JSON.stringify({
-
             filename:
               serverFilename,
-
-            fileSize:
-              bytes
-
+            fileSize
           })
-
       }
     );
 
@@ -260,22 +222,11 @@ async function uploadImage(
 
   if (!fileUrl) {
 
-    console.error(
-      "ATLAS_UPLOAD_CONFIRM_INVALID:",
-      confirmData
-    );
-
     throw new Error(
       "FFMPEG_FILE_URL_MISSING"
     );
 
   }
-
-
-  console.log(
-    "ATLAS_IMAGE_UPLOADED:",
-    serverFilename
-  );
 
 
   return {
@@ -284,23 +235,62 @@ async function uploadImage(
 
     fileUrl,
 
-    fileSize:
-      bytes
-
+    fileSize
   };
 
 }
 
 
 // ============================================================
-// 🎬 CREATE VIDEO
+// 🎥 CREATE VIDEO
 // ============================================================
 
 async function createVideoJob(
   env,
   fileUrl,
-  duration
+  duration,
+  motion = "zoom_in"
 ) {
+
+  // ----------------------------------------------------------
+  // Motion filters
+  // ----------------------------------------------------------
+
+  let videoFilter;
+
+
+  switch (motion) {
+
+    case "zoom_in":
+
+      videoFilter =
+        "scale=1200:2133:force_original_aspect_ratio=increase,"
+        + "crop=1200:2133,"
+        + "zoompan="
+        + "z='min(zoom+0.0015,1.12)':"
+        + "d=300:"
+        + "x='iw/2-(iw/zoom/2)':"
+        + "y='ih/2-(ih/zoom/2)':"
+        + "s=1080x1920:"
+        + "fps=30";
+
+      break;
+
+
+    default:
+
+      videoFilter =
+        "scale=1080:1920:force_original_aspect_ratio=increase,"
+        + "crop=1080:1920";
+
+  }
+
+
+  console.log(
+    "ATLAS_MOTION:",
+    motion
+  );
+
 
   const response =
     await fetch(
@@ -328,7 +318,6 @@ async function createVideoJob(
 
                     argument:
                       "1"
-
                   },
 
                   {
@@ -337,7 +326,6 @@ async function createVideoJob(
 
                     argument:
                       "30"
-
                   }
 
                 ]
@@ -357,7 +345,6 @@ async function createVideoJob(
 
                 argument:
                   String(duration)
-
               },
 
               {
@@ -365,8 +352,7 @@ async function createVideoJob(
                   "-vf",
 
                 argument:
-                  "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
-
+                  videoFilter
               },
 
               {
@@ -375,7 +361,6 @@ async function createVideoJob(
 
                 argument:
                   "libx264"
-
               },
 
               {
@@ -384,7 +369,6 @@ async function createVideoJob(
 
                 argument:
                   "yuv420p"
-
               },
 
               {
@@ -393,7 +377,6 @@ async function createVideoJob(
 
                 argument:
                   "30"
-
               },
 
               {
@@ -402,7 +385,6 @@ async function createVideoJob(
 
                 argument:
                   ""
-
               },
 
               {
@@ -411,13 +393,11 @@ async function createVideoJob(
 
                 argument:
                   "+faststart"
-
               }
 
             ]
 
           })
-
       }
     );
 
@@ -434,9 +414,7 @@ async function createVideoJob(
     );
 
     throw new Error(
-      `FFMPEG_TRANSCODE_FAILED:${JSON.stringify(
-        data
-      )}`
+      `FFMPEG_TRANSCODE_FAILED:${JSON.stringify(data)}`
     );
 
   }
@@ -461,19 +439,13 @@ async function createVideoJob(
   }
 
 
-  console.log(
-    "ATLAS_VIDEO_JOB:",
-    jobId
-  );
-
-
   return jobId;
 
 }
 
 
 // ============================================================
-// 🔄 POLL JOB
+// 🔄 WAIT
 // ============================================================
 
 async function waitForVideo(
@@ -498,14 +470,10 @@ async function waitForVideo(
       await fetch(
         `${BASE_URL}/v1/transcodes/${jobId}`,
         {
-          method:
-            "GET",
-
           headers: {
             "Authorization":
               `Bearer ${env.FFMPEG_MICRO_API_KEY}`
           }
-
         }
       );
 
@@ -516,15 +484,8 @@ async function waitForVideo(
 
     if (!response.ok) {
 
-      console.error(
-        "ATLAS_TRANSCODE_STATUS_ERROR:",
-        data
-      );
-
       throw new Error(
-        `FFMPEG_STATUS_FAILED:${JSON.stringify(
-          data
-        )}`
+        `FFMPEG_STATUS_FAILED:${JSON.stringify(data)}`
       );
 
     }
@@ -543,8 +504,7 @@ async function waitForVideo(
 
 
     if (
-      status ===
-      "completed"
+      status === "completed"
     ) {
 
       return data;
@@ -553,18 +513,13 @@ async function waitForVideo(
 
 
     if (
-      status ===
-        "failed" ||
-      status ===
-        "error" ||
-      status ===
-        "cancelled"
+      status === "failed" ||
+      status === "error" ||
+      status === "cancelled"
     ) {
 
       throw new Error(
-        `FFMPEG_RENDER_FAILED:${JSON.stringify(
-          data
-        )}`
+        `FFMPEG_RENDER_FAILED:${JSON.stringify(data)}`
       );
 
     }
@@ -580,7 +535,7 @@ async function waitForVideo(
 
 
 // ============================================================
-// 📥 GET DOWNLOAD URL
+// 📥 DOWNLOAD URL
 // ============================================================
 
 async function getDownloadUrl(
@@ -592,14 +547,10 @@ async function getDownloadUrl(
     await fetch(
       `${BASE_URL}/v1/transcodes/${jobId}/download?url=true`,
       {
-        method:
-          "GET",
-
         headers: {
           "Authorization":
             `Bearer ${env.FFMPEG_MICRO_API_KEY}`
         }
-
       }
     );
 
@@ -610,15 +561,8 @@ async function getDownloadUrl(
 
   if (!response.ok) {
 
-    console.error(
-      "ATLAS_DOWNLOAD_ERROR:",
-      data
-    );
-
     throw new Error(
-      `FFMPEG_DOWNLOAD_FAILED:${JSON.stringify(
-        data
-      )}`
+      `FFMPEG_DOWNLOAD_FAILED:${JSON.stringify(data)}`
     );
 
   }
@@ -630,11 +574,6 @@ async function getDownloadUrl(
 
 
   if (!url) {
-
-    console.error(
-      "ATLAS_DOWNLOAD_INVALID:",
-      data
-    );
 
     throw new Error(
       "FFMPEG_DOWNLOAD_URL_MISSING"
@@ -649,7 +588,7 @@ async function getDownloadUrl(
 
 
 // ============================================================
-// 🚀 MAIN RENDER FUNCTION
+// 🚀 MAIN
 // ============================================================
 
 export async function renderImageToVideo(
@@ -664,26 +603,27 @@ export async function renderImageToVideo(
       Math.min(
         30,
         Number(
-          options.duration ||
-          10
+          options.duration || 10
         )
       )
     );
+
+
+  const motion =
+    options.motion ||
+    "zoom_in";
 
 
   console.log(
     "ATLAS_RENDER_START:",
     {
       duration,
+      motion,
       bytes:
         imageBuffer?.byteLength
     }
   );
 
-
-  // ----------------------------------------------------------
-  // Upload image
-  // ----------------------------------------------------------
 
   const uploaded =
     await uploadImage(
@@ -692,31 +632,20 @@ export async function renderImageToVideo(
     );
 
 
-  // ----------------------------------------------------------
-  // Create transcode
-  // ----------------------------------------------------------
-
   const jobId =
     await createVideoJob(
       env,
       uploaded.fileUrl,
-      duration
+      duration,
+      motion
     );
 
-
-  // ----------------------------------------------------------
-  // Wait
-  // ----------------------------------------------------------
 
   await waitForVideo(
     env,
     jobId
   );
 
-
-  // ----------------------------------------------------------
-  // Download URL
-  // ----------------------------------------------------------
 
   const videoUrl =
     await getDownloadUrl(
@@ -729,19 +658,17 @@ export async function renderImageToVideo(
     "ATLAS_RENDER_COMPLETE:",
     {
       jobId,
+      motion,
       videoUrl
     }
   );
 
 
   return {
-
     jobId,
-
     videoUrl,
-
-    duration
-
+    duration,
+    motion
   };
 
 }
