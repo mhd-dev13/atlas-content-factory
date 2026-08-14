@@ -1,6 +1,7 @@
 // ============================================================
 // 🎬 ATLAS VIDEO RENDERER
 // Persian Hook + Slow Zoom + Optional Audio
+// Stable FFmpeg Renderer
 // ============================================================
 
 const BASE_URL =
@@ -48,7 +49,7 @@ function authHeaders(env) {
 
 
 // ============================================================
-// 🧹 ESCAPE DRAWTEXT
+// 🧹 ESCAPE FFMPEG DRAWTEXT
 // ============================================================
 
 function escapeDrawtext(value) {
@@ -83,6 +84,11 @@ function escapeDrawtext(value) {
     .replace(
       /\]/g,
       "\\]"
+    )
+
+    .replace(
+      /%/g,
+      "\\%"
     );
 
 }
@@ -94,7 +100,7 @@ function escapeDrawtext(value) {
 
 function wrapText(
   text,
-  maxChars = 24
+  maxChars = 25
 ) {
 
   const clean =
@@ -104,7 +110,9 @@ function wrapText(
 
 
   if (!clean) {
+
     return [];
+
   }
 
 
@@ -114,7 +122,8 @@ function wrapText(
 
   const lines = [];
 
-  let current = "";
+  let current =
+    "";
 
 
   for (
@@ -181,7 +190,7 @@ function buildTextFilter(
   const lines =
     wrapText(
       hook,
-      24
+      25
     );
 
 
@@ -202,9 +211,22 @@ function buildTextFilter(
     );
 
 
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT use:
+   *
+   * fontweight=bold
+   * text_shaping=1
+   *
+   * because some ffmpeg-micro environments
+   * reject those options.
+   */
+
+
   return [
 
-    "drawtext=",
+    "drawtext",
 
     "font='DejaVu Sans'",
 
@@ -214,9 +236,7 @@ function buildTextFilter(
 
     "fontsize=58",
 
-    "line_spacing=18",
-
-    "text_shaping=1",
+    "line_spacing=16",
 
     "x=(w-text_w)/2",
 
@@ -226,7 +246,7 @@ function buildTextFilter(
 
     "boxcolor=black@0.42",
 
-    "boxborderw=28",
+    "boxborderw=24",
 
     "shadowcolor=black@0.75",
 
@@ -306,6 +326,11 @@ async function uploadImage(
 
   if (!response.ok) {
 
+    console.error(
+      "ATLAS_UPLOAD_URL_ERROR:",
+      data
+    );
+
     throw new Error(
       `FFMPEG_UPLOAD_URL_FAILED:${JSON.stringify(data)}`
     );
@@ -333,6 +358,10 @@ async function uploadImage(
   }
 
 
+  // ----------------------------------------------------------
+  // Upload binary
+  // ----------------------------------------------------------
+
   const uploadResponse =
     await fetch(
       uploadUrl,
@@ -356,12 +385,26 @@ async function uploadImage(
 
   if (!uploadResponse.ok) {
 
+    const errorText =
+      await uploadResponse.text();
+
+
+    console.error(
+      "ATLAS_IMAGE_UPLOAD_ERROR:",
+      errorText
+    );
+
+
     throw new Error(
       `FFMPEG_IMAGE_UPLOAD_FAILED:${uploadResponse.status}`
     );
 
   }
 
+
+  // ----------------------------------------------------------
+  // Confirm
+  // ----------------------------------------------------------
 
   const confirmResponse =
     await fetch(
@@ -392,6 +435,12 @@ async function uploadImage(
 
 
   if (!confirmResponse.ok) {
+
+    console.error(
+      "ATLAS_UPLOAD_CONFIRM_ERROR:",
+      confirmData
+    );
+
 
     throw new Error(
       `FFMPEG_UPLOAD_CONFIRM_FAILED:${JSON.stringify(
@@ -443,7 +492,7 @@ async function createVideoJob(
 ) {
 
   // ----------------------------------------------------------
-  // VIDEO FILTER
+  // VIDEO FILTERS
   // ----------------------------------------------------------
 
   const filters = [
@@ -464,7 +513,7 @@ async function createVideoJob(
 
 
   // ----------------------------------------------------------
-  // HOOK OVERLAY
+  // TEXT OVERLAY
   // ----------------------------------------------------------
 
   const textFilter =
@@ -637,6 +686,10 @@ async function createVideoJob(
   ];
 
 
+  // ----------------------------------------------------------
+  // AUDIO
+  // ----------------------------------------------------------
+
   if (hasAudio) {
 
     options.push({
@@ -686,6 +739,10 @@ async function createVideoJob(
   }
 
 
+  // ----------------------------------------------------------
+  // CREATE TRANSCODE
+  // ----------------------------------------------------------
+
   const response =
     await fetch(
       `${BASE_URL}/v1/transcodes`,
@@ -723,6 +780,7 @@ async function createVideoJob(
       data
     );
 
+
     throw new Error(
       `FFMPEG_TRANSCODE_FAILED:${JSON.stringify(data)}`
     );
@@ -736,6 +794,12 @@ async function createVideoJob(
 
 
   if (!jobId) {
+
+    console.error(
+      "ATLAS_TRANSCODE_INVALID:",
+      data
+    );
+
 
     throw new Error(
       "FFMPEG_JOB_ID_MISSING"
@@ -961,12 +1025,20 @@ export async function renderImageToVideo(
   );
 
 
+  // ----------------------------------------------------------
+  // Upload
+  // ----------------------------------------------------------
+
   const uploaded =
     await uploadImage(
       env,
       imageBuffer
     );
 
+
+  // ----------------------------------------------------------
+  // Create job
+  // ----------------------------------------------------------
 
   const jobId =
     await createVideoJob(
@@ -986,11 +1058,19 @@ export async function renderImageToVideo(
     );
 
 
+  // ----------------------------------------------------------
+  // Wait
+  // ----------------------------------------------------------
+
   await waitForVideo(
     env,
     jobId
   );
 
+
+  // ----------------------------------------------------------
+  // Download
+  // ----------------------------------------------------------
 
   const videoUrl =
     await getDownloadUrl(
