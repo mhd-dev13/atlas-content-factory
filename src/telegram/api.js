@@ -1,5 +1,14 @@
 // ============================================================
 // 📡 ATLAS TELEGRAM API
+// Stable Telegram Layer
+// ============================================================
+
+const TELEGRAM_MAX_CAPTION =
+  1024;
+
+
+// ============================================================
+// 🚀 TELEGRAM REQUEST
 // ============================================================
 
 export async function telegram(
@@ -8,10 +17,12 @@ export async function telegram(
   body = {}
 ) {
 
-  if (!env.TELEGRAM_BOT_TOKEN) {
+  if (
+    !env?.TELEGRAM_BOT_TOKEN
+  ) {
 
     throw new Error(
-      "TELEGRAM_BOT_TOKEN is missing"
+      "TELEGRAM_BOT_TOKEN_MISSING"
     );
 
   }
@@ -23,10 +34,13 @@ export async function telegram(
 
   const response =
     await fetch(
+
       url,
+
       {
 
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
 
@@ -36,9 +50,12 @@ export async function telegram(
         },
 
         body:
-          JSON.stringify(body)
+          JSON.stringify(
+            body
+          )
 
       }
+
     );
 
 
@@ -49,9 +66,11 @@ export async function telegram(
   if (!data.ok) {
 
     throw new Error(
+
       `Telegram API error: ${JSON.stringify(
         data
       )}`
+
     );
 
   }
@@ -72,30 +91,27 @@ export async function sendMessage(
   text
 ) {
 
-  let safeText =
+  const safeText =
     String(
       text || ""
+    ).trim();
+
+
+  if (!safeText) {
+
+    throw new Error(
+      "TELEGRAM_MESSAGE_EMPTY"
     );
-
-
-  // Telegram message limit
-  if (
-    safeText.length > 3900
-  ) {
-
-    safeText =
-      safeText.slice(
-        0,
-        3890
-      ) +
-      "\n...";
 
   }
 
 
   return telegram(
+
     env,
+
     "sendMessage",
+
     {
 
       chat_id:
@@ -105,6 +121,50 @@ export async function sendMessage(
         safeText
 
     }
+
+  );
+
+}
+
+
+// ============================================================
+// ✂️ SAFE CAPTION
+// ============================================================
+
+function safeCaption(
+  caption
+) {
+
+  const value =
+    String(
+      caption || ""
+    ).trim();
+
+
+  if (!value) {
+    return "";
+  }
+
+
+  if (
+    value.length <=
+    TELEGRAM_MAX_CAPTION
+  ) {
+
+    return value;
+
+  }
+
+
+  return (
+
+    value.slice(
+      0,
+      TELEGRAM_MAX_CAPTION - 3
+    ) +
+
+    "..."
+
   );
 
 }
@@ -130,30 +190,18 @@ export async function sendVideo(
   }
 
 
-  let safeCaption =
-    String(
-      caption || ""
+  const finalCaption =
+    safeCaption(
+      caption
     );
 
 
-  // Telegram video caption safety
-  if (
-    safeCaption.length > 900
-  ) {
-
-    safeCaption =
-      safeCaption.slice(
-        0,
-        890
-      ) +
-      "...";
-
-  }
-
-
   return telegram(
+
     env,
+
     "sendVideo",
+
     {
 
       chat_id:
@@ -163,12 +211,13 @@ export async function sendVideo(
         videoUrl,
 
       caption:
-        safeCaption,
+        finalCaption,
 
       supports_streaming:
         true
 
     }
+
   );
 
 }
