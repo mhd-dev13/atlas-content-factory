@@ -1,7 +1,6 @@
 // ============================================================
-// 🎬 ATLAS REEL PIPELINE
-// One Click:
-// Idea → Reel Director → Persian Hook → Image → Video → Caption
+// 🎬 ATLAS REEL PIPELINE 3.0
+// Idea → Director → Image → Video → Caption
 // ============================================================
 
 import {
@@ -27,7 +26,9 @@ import {
 // 💾 JOB KEY
 // ============================================================
 
-function getReelKey(chatId) {
+function getReelKey(
+  chatId
+) {
 
   return `atlas:reel:${chatId}`;
 
@@ -35,7 +36,7 @@ function getReelKey(chatId) {
 
 
 // ============================================================
-// 💾 SAVE JOB
+// 💾 SAVE
 // ============================================================
 
 async function saveJob(
@@ -75,7 +76,7 @@ async function saveJob(
 
 
 // ============================================================
-// 📡 SAFE PROGRESS
+// 📡 PROGRESS
 // ============================================================
 
 async function progress(
@@ -96,7 +97,8 @@ async function progress(
 
     console.error(
       "ATLAS_PROGRESS_ERROR:",
-      error?.message || error
+      error?.message ||
+      error
     );
 
   }
@@ -105,7 +107,7 @@ async function progress(
 
 
 // ============================================================
-// 🎯 GET PERSIAN HOOK
+// 🎯 HOOK
 // ============================================================
 
 function getHook(
@@ -115,14 +117,8 @@ function getHook(
 
   const candidates = [
 
-    // Highest priority:
-    reel?.on_screen_text?.fa,
+    reel?.on_screen_text?.en,
 
-    reel?.hook_fa,
-
-    idea?.hook_fa,
-
-    // Fallback:
     reel?.hook,
 
     idea?.hook_en,
@@ -143,20 +139,22 @@ function getHook(
 
       return String(
         candidate
-      ).trim();
+      )
+        .replace(/\s+/g, " ")
+        .trim();
 
     }
 
   }
 
 
-  return "فقط چند لحظه مکث کن.";
+  return "LET THE RAIN SLOW EVERYTHING DOWN.";
 
 }
 
 
 // ============================================================
-// 🎨 GET VISUAL
+// 🎨 VISUAL
 // ============================================================
 
 function getVisual(
@@ -198,21 +196,21 @@ function getVisual(
 
 
   return [
-    "A peaceful cinematic nature scene,",
-    "minimal composition,",
-    "soft atmospheric light."
+    "A cinematic peaceful nature scene",
+    "with realistic lighting and subtle atmosphere."
   ].join(" ");
 
 }
 
 
 // ============================================================
-// 🖼️ BUILD IMAGE PROMPT
+// 🖼️ IMAGE PROMPT
 // ============================================================
 
 function buildImagePrompt(
   reel,
-  idea
+  idea,
+  hook
 ) {
 
   const visual =
@@ -224,18 +222,13 @@ function buildImagePrompt(
 
   const camera =
     reel?.scenes?.[0]?.camera ||
-    "cinematic static shot";
-
-
-  const motion =
-    reel?.scenes?.[0]?.motion ||
-    "subtle natural movement";
+    "cinematic medium-wide shot";
 
 
   return `
 
-Create ONE premium cinematic background
-for a vertical Instagram Reel.
+Create ONE premium cinematic background image
+for an Instagram Reel.
 
 SUBJECT:
 
@@ -245,50 +238,60 @@ CAMERA:
 
 ${camera}
 
-MOTION CONCEPT:
+STYLE:
 
-${motion}
-
-VISUAL STYLE:
-
-cinematic realistic photography,
-minimalist Instagram aesthetic,
-moody peaceful atmosphere,
-soft natural lighting,
-subtle film grain,
-deep atmospheric tones,
-high detail,
-professional composition,
-strong negative space,
-visually interesting but not busy.
+premium cinematic photography,
+photorealistic,
+natural realistic lighting,
+soft atmospheric depth,
+subtle depth of field,
+high-end editorial photography,
+emotionally calming,
+visually rich,
+Instagram viral aesthetic,
+professional composition.
 
 COMPOSITION:
 
 Vertical 9:16.
-Designed for 1080x1920.
-Keep important visual elements away
-from the extreme edges.
 
-VERY IMPORTANT:
+Designed specifically for a 1080x1920 Reel.
 
-The final video will contain Persian
-on-screen typography added later.
+Keep the main subject visually interesting.
 
-DO NOT generate:
+Leave clean negative space in the
+upper portion of the image for a headline.
 
-text,
-letters,
-words,
-subtitles,
-captions,
-logos,
-watermarks,
-signs,
-UI,
-interfaces,
-borders.
+The headline will be added later by the
+video rendering system.
 
-The image itself must contain ZERO text.
+IMPORTANT:
+
+DO NOT generate text.
+
+DO NOT generate letters.
+
+DO NOT generate words.
+
+DO NOT generate subtitles.
+
+DO NOT generate logos.
+
+DO NOT generate watermarks.
+
+DO NOT generate UI elements.
+
+DO NOT place typography in the image.
+
+The image must be clean and cinematic.
+
+HEADLINE SPACE:
+
+Keep the upper 25 percent of the image
+visually calm and uncluttered.
+
+Do not place important objects directly
+behind the future headline.
 
 `.trim();
 
@@ -296,7 +299,7 @@ The image itself must contain ZERO text.
 
 
 // ============================================================
-// 📝 BUILD FINAL CAPTION
+// 📝 BUILD CAPTION
 // ============================================================
 
 function buildCaption(
@@ -305,19 +308,23 @@ function buildCaption(
 
   const english =
     String(
-      reel?.caption_en || ""
+      reel?.caption_en ||
+      reel?.hook ||
+      ""
     ).trim();
 
 
   const persian =
     String(
-      reel?.caption_fa || ""
+      reel?.caption_fa ||
+      "چند لحظه از شلوغی فاصله بگیر."
     ).trim();
 
 
   const cta =
     String(
-      reel?.cta || ""
+      reel?.cta ||
+      ""
     ).trim();
 
 
@@ -364,13 +371,15 @@ function buildCaption(
 
   return [
 
-    english
-      ? `🇬🇧 ${english}`
-      : "",
+    "🇬🇧",
 
-    persian
-      ? `🇮🇷 ${persian}`
-      : "",
+    english,
+
+    "",
+
+    "🇮🇷",
+
+    persian,
 
     cta
       ? `✨ ${cta}`
@@ -380,9 +389,14 @@ function buildCaption(
 
   ]
 
-    .filter(Boolean)
+    .filter(
+      value =>
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+    )
 
-    .join("\n\n")
+    .join("\n")
 
     .trim();
 
@@ -390,41 +404,7 @@ function buildCaption(
 
 
 // ============================================================
-// ✂️ TELEGRAM SAFE CAPTION
-// ============================================================
-
-function safeCaption(
-  caption
-) {
-
-  const max =
-    850;
-
-
-  if (
-    caption.length <= max
-  ) {
-
-    return caption;
-
-  }
-
-
-  return (
-    caption
-      .slice(
-        0,
-        max - 3
-      )
-      .trim() +
-    "..."
-  );
-
-}
-
-
-// ============================================================
-// ⏱️ PARSE DURATION
+// ⏱️ DURATION
 // ============================================================
 
 function parseDuration(
@@ -446,18 +426,20 @@ function parseDuration(
   }
 
 
-  const seconds =
-    Number(
-      match[1]
-    );
-
-
   return Math.max(
+
     5,
+
     Math.min(
+
       30,
-      seconds
+
+      Number(
+        match[1]
+      )
+
     )
+
   );
 
 }
@@ -510,7 +492,9 @@ export async function createReel(
 
 
     await progress(
+
       env,
+
       chatId,
 
       [
@@ -519,6 +503,7 @@ export async function createReel(
         "🧠 مرحله 1/5",
         "در حال ساخت ایده..."
       ].join("\n")
+
     );
 
 
@@ -540,7 +525,7 @@ export async function createReel(
 
 
     // ========================================================
-    // 2️⃣ REEL DIRECTOR
+    // 2️⃣ DIRECTOR
     // ========================================================
 
     job.status =
@@ -555,16 +540,19 @@ export async function createReel(
 
 
     await progress(
+
       env,
+
       chatId,
 
       [
         "🎯 مرحله 2/5",
-        "Atlas Reel Director در حال طراحی Reel...",
+        "Atlas Reel Director...",
         "",
-        `🇮🇷 ${idea?.hook_fa || "در حال ساخت Hook..."}`
-
+        `🇬🇧 ${idea?.hook_en || ""}`,
+        `🇮🇷 ${idea?.hook_fa || ""}`
       ].join("\n")
+
     );
 
 
@@ -579,10 +567,6 @@ export async function createReel(
 
       );
 
-
-    // --------------------------------------------------------
-    // Persian Hook
-    // --------------------------------------------------------
 
     const hook =
       getHook(
@@ -622,30 +606,40 @@ export async function createReel(
 
 
     await progress(
+
       env,
+
       chatId,
 
       [
         "🖼️ مرحله 3/5",
         "در حال ساخت تصویر سینمایی...",
         "",
-        `📝 متن روی تصویر:`,
-        hook
+        `🎯 ${hook}`
       ].join("\n")
+
     );
 
 
     const imagePrompt =
       buildImagePrompt(
+
         reel,
-        idea
+
+        idea,
+
+        hook
+
       );
 
 
     const imageBuffer =
       await generateImage(
+
         env,
+
         imagePrompt
+
       );
 
 
@@ -676,18 +670,20 @@ export async function createReel(
 
 
     await progress(
+
       env,
+
       chatId,
 
       [
         "🎥 مرحله 4/5",
-        "در حال ساخت Reel...",
+        "در حال ساخت ویدیو...",
         "",
-        "📝 Persian Hook",
+        "✨ Hook Typography",
         "🔍 Slow Zoom",
-        "📱 1080×1920",
-        "🔊 Audio Engine: Ready"
+        "📱 1080×1920"
       ].join("\n")
+
     );
 
 
@@ -733,11 +729,21 @@ export async function createReel(
 
 
     // ========================================================
-    // 5️⃣ FINAL
+    // 5️⃣ CAPTION
     // ========================================================
 
     job.status =
-      "ready";
+      "caption";
+
+
+    const caption =
+      buildCaption(
+        reel
+      );
+
+
+    job.caption =
+      caption;
 
 
     await saveJob(
@@ -747,22 +753,19 @@ export async function createReel(
     );
 
 
-    const caption =
-      buildCaption(
-        reel
-      );
-
-
     await progress(
+
       env,
+
       chatId,
 
       [
         "📦 مرحله 5/5",
-        "Reel آماده شد.",
+        "Reel آماده است.",
         "",
-        "📤 در حال ارسال..."
+        "📤 در حال ارسال به تلگرام..."
       ].join("\n")
+
     );
 
 
@@ -778,9 +781,7 @@ export async function createReel(
 
       rendered.videoUrl,
 
-      safeCaption(
-        caption
-      )
+      caption
 
     );
 
@@ -797,10 +798,6 @@ export async function createReel(
       Date.now();
 
 
-    job.caption =
-      caption;
-
-
     await saveJob(
       env,
       chatId,
@@ -809,7 +806,9 @@ export async function createReel(
 
 
     console.log(
+
       "ATLAS_REEL_COMPLETED:",
+
       JSON.stringify({
 
         chatId,
@@ -818,13 +817,13 @@ export async function createReel(
 
         duration,
 
-        audio:
-          rendered.audio,
+        caption,
 
         video:
           rendered.videoUrl
 
       })
+
     );
 
 
@@ -849,9 +848,12 @@ export async function createReel(
   } catch (error) {
 
     console.error(
+
       "ATLAS_REEL_PIPELINE_ERROR:",
+
       error?.stack ||
       error
+
     );
 
 
@@ -871,58 +873,21 @@ export async function createReel(
     );
 
 
-    // --------------------------------------------------------
-    // Don't expose gigantic FFmpeg errors to Telegram
-    // --------------------------------------------------------
+    await sendMessage(
 
-    let safeError =
-      String(
-        error?.message ||
-        error ||
-        "UNKNOWN_ERROR"
-      );
+      env,
 
+      chatId,
 
-    if (
-      safeError.length > 1200
-    ) {
+      [
+        "❌ ساخت Reel متوقف شد.",
+        "",
+        `🔧 ${error?.message || error}`,
+        "",
+        "💡 Reel قبلی دست‌نخورده باقی می‌ماند."
+      ].join("\n")
 
-      safeError =
-        safeError.slice(
-          0,
-          1200
-        ) +
-        "...";
-
-    }
-
-
-    try {
-
-      await sendMessage(
-        env,
-        chatId,
-
-        [
-          "❌ ساخت Reel متوقف شد.",
-          "",
-          `🔧 ${safeError}`,
-          "",
-          "💡 Reel قبلی دست‌نخورده باقی می‌ماند."
-        ].join("\n")
-      );
-
-    } catch (
-      telegramError
-    ) {
-
-      console.error(
-        "ATLAS_FAILURE_MESSAGE_ERROR:",
-        telegramError?.message ||
-        telegramError
-      );
-
-    }
+    );
 
 
     return {
