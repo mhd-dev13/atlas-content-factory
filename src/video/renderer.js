@@ -1,12 +1,6 @@
 // ============================================================
-// 🎬 ATLAS VIDEO RENDERER
-// Stable Renderer
-// Slow Zoom + Optional Audio
-//
-// IMPORTANT:
-// Text is NOT rendered by FFmpeg.
-// This avoids drawtext/font/fontweight problems.
-// Text should be baked into the generated image.
+// 🎬 ATLAS VIDEO RENDERER 3.0
+// Clean Image + Hook Typography + Slow Zoom
 // ============================================================
 
 const BASE_URL =
@@ -49,6 +43,207 @@ function authHeaders(env) {
       "application/json"
 
   };
+
+}
+
+
+// ============================================================
+// 🧹 ESCAPE DRAWTEXT
+// ============================================================
+
+function escapeDrawtext(
+  value
+) {
+
+  return String(
+    value || ""
+  )
+
+    .replace(
+      /\\/g,
+      "\\\\"
+    )
+
+    .replace(
+      /'/g,
+      "\\'"
+    )
+
+    .replace(
+      /:/g,
+      "\\:"
+    )
+
+    .replace(
+      /,/g,
+      "\\,"
+    )
+
+    .replace(
+      /\[/g,
+      "\\["
+    )
+
+    .replace(
+      /\]/g,
+      "\\]"
+    )
+
+    .replace(
+      /%/g,
+      "\\%"
+    );
+
+}
+
+
+// ============================================================
+// ✂️ WRAP HOOK
+// ============================================================
+
+function wrapHook(
+  text,
+  maxChars = 22
+) {
+
+  const clean =
+    String(
+      text || ""
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+
+  if (!clean) {
+    return [];
+  }
+
+
+  const words =
+    clean.split(" ");
+
+
+  const lines = [];
+
+  let current = "";
+
+
+  for (
+    const word of words
+  ) {
+
+    const candidate =
+      current
+        ? `${current} ${word}`
+        : word;
+
+
+    if (
+      candidate.length <=
+      maxChars
+    ) {
+
+      current =
+        candidate;
+
+    } else {
+
+      if (current) {
+
+        lines.push(
+          current
+        );
+
+      }
+
+      current =
+        word;
+
+    }
+
+  }
+
+
+  if (current) {
+
+    lines.push(
+      current
+    );
+
+  }
+
+
+  return lines.slice(
+    0,
+    3
+  );
+
+}
+
+
+// ============================================================
+// 📝 BUILD HOOK FILTER
+// ============================================================
+
+function buildHookFilter(
+  hook
+) {
+
+  const lines =
+    wrapHook(
+      hook,
+      22
+    );
+
+
+  if (!lines.length) {
+
+    return "";
+
+  }
+
+
+  const text =
+    lines.join("\\n");
+
+
+  const safeText =
+    escapeDrawtext(
+      text
+    );
+
+
+  return [
+
+    "drawtext",
+
+    "font='DejaVu Sans'",
+
+    `text='${safeText}'`,
+
+    "fontcolor=white",
+
+    "fontsize=62",
+
+    "line_spacing=14",
+
+    "x=(w-text_w)/2",
+
+    "y=h*0.12",
+
+    "box=1",
+
+    "boxcolor=black@0.46",
+
+    "boxborderw=24",
+
+    "shadowcolor=black@0.85",
+
+    "shadowx=3",
+
+    "shadowy=3"
+
+  ].join(":");
 
 }
 
@@ -120,11 +315,6 @@ async function uploadImage(
 
   if (!response.ok) {
 
-    console.error(
-      "ATLAS_UPLOAD_URL_ERROR:",
-      data
-    );
-
     throw new Error(
       `FFMPEG_UPLOAD_URL_FAILED:${JSON.stringify(data)}`
     );
@@ -152,10 +342,6 @@ async function uploadImage(
   }
 
 
-  // ----------------------------------------------------------
-  // Upload binary
-  // ----------------------------------------------------------
-
   const uploadResponse =
     await fetch(
       uploadUrl,
@@ -179,24 +365,12 @@ async function uploadImage(
 
   if (!uploadResponse.ok) {
 
-    const errorText =
-      await uploadResponse.text();
-
-    console.error(
-      "ATLAS_IMAGE_UPLOAD_ERROR:",
-      errorText
-    );
-
     throw new Error(
       `FFMPEG_IMAGE_UPLOAD_FAILED:${uploadResponse.status}`
     );
 
   }
 
-
-  // ----------------------------------------------------------
-  // Confirm upload
-  // ----------------------------------------------------------
 
   const confirmResponse =
     await fetch(
@@ -227,11 +401,6 @@ async function uploadImage(
 
 
   if (!confirmResponse.ok) {
-
-    console.error(
-      "ATLAS_UPLOAD_CONFIRM_ERROR:",
-      confirmData
-    );
 
     throw new Error(
       `FFMPEG_UPLOAD_CONFIRM_FAILED:${JSON.stringify(
@@ -278,55 +447,48 @@ async function createVideoJob(
   fileUrl,
   duration,
   motion,
+  hook,
   audioUrl
 ) {
 
+  const filters = [
+
+    "scale=1200:2133:force_original_aspect_ratio=increase",
+
+    "crop=1200:2133",
+
+    "zoompan="
+      + "z='min(zoom+0.0015,1.12)':"
+      + "d=300:"
+      + "x='iw/2-(iw/zoom/2)':"
+      + "y='ih/2-(ih/zoom/2)':"
+      + "s=1080x1920:"
+      + "fps=30"
+
+  ];
+
+
   // ----------------------------------------------------------
-  // VIDEO FILTER
-  // ----------------------------------------------------------
-  //
-  // IMPORTANT:
-  // NO DRAWTEXT
-  // NO FONT
-  // NO TEXT_SHAPING
-  // NO FONTWEIGHT
-  //
-  // Text is already baked into the image.
+  // HOOK
   // ----------------------------------------------------------
 
-  let videoFilter;
+  const hookFilter =
+    buildHookFilter(
+      hook
+    );
 
 
-  switch (
-    String(motion || "zoom_in")
-      .toLowerCase()
-  ) {
+  if (hookFilter) {
 
-    case "zoom_in":
-
-      videoFilter =
-        "scale=1200:2133:force_original_aspect_ratio=increase,"
-        + "crop=1200:2133,"
-        + "zoompan="
-        + "z='min(zoom+0.0015,1.12)':"
-        + "d=300:"
-        + "x='iw/2-(iw/zoom/2)':"
-        + "y='ih/2-(ih/zoom/2)':"
-        + "s=1080x1920:"
-        + "fps=30";
-
-      break;
-
-
-    default:
-
-      videoFilter =
-        "scale=1080:1920:force_original_aspect_ratio=increase,"
-        + "crop=1080:1920";
-
-      break;
+    filters.push(
+      hookFilter
+    );
 
   }
+
+
+  const videoFilter =
+    filters.join(",");
 
 
   console.log(
@@ -375,10 +537,6 @@ async function createVideoJob(
   ];
 
 
-  // ----------------------------------------------------------
-  // OPTIONAL AUDIO
-  // ----------------------------------------------------------
-
   const hasAudio =
     Boolean(
       audioUrl
@@ -412,7 +570,7 @@ async function createVideoJob(
 
 
   // ----------------------------------------------------------
-  // OUTPUT OPTIONS
+  // OPTIONS
   // ----------------------------------------------------------
 
   const options = [
@@ -490,10 +648,6 @@ async function createVideoJob(
   ];
 
 
-  // ----------------------------------------------------------
-  // AUDIO
-  // ----------------------------------------------------------
-
   if (hasAudio) {
 
     options.push({
@@ -543,10 +697,6 @@ async function createVideoJob(
   }
 
 
-  // ----------------------------------------------------------
-  // CREATE TRANSCODE
-  // ----------------------------------------------------------
-
   const response =
     await fetch(
       `${BASE_URL}/v1/transcodes`,
@@ -579,11 +729,6 @@ async function createVideoJob(
 
   if (!response.ok) {
 
-    console.error(
-      "ATLAS_TRANSCODE_CREATE_ERROR:",
-      data
-    );
-
     throw new Error(
       `FFMPEG_TRANSCODE_FAILED:${JSON.stringify(data)}`
     );
@@ -598,22 +743,11 @@ async function createVideoJob(
 
   if (!jobId) {
 
-    console.error(
-      "ATLAS_TRANSCODE_INVALID:",
-      data
-    );
-
     throw new Error(
       "FFMPEG_JOB_ID_MISSING"
     );
 
   }
-
-
-  console.log(
-    "ATLAS_TRANSCODE_JOB:",
-    jobId
-  );
 
 
   return jobId;
@@ -622,7 +756,7 @@ async function createVideoJob(
 
 
 // ============================================================
-// 🔄 WAIT FOR VIDEO
+// 🔄 WAIT
 // ============================================================
 
 async function waitForVideo(
@@ -718,7 +852,7 @@ async function waitForVideo(
 
 
 // ============================================================
-// 📥 DOWNLOAD URL
+// 📥 DOWNLOAD
 // ============================================================
 
 async function getDownloadUrl(
@@ -786,25 +920,26 @@ export async function renderImageToVideo(
 
   const duration =
     Math.max(
-
       5,
-
       Math.min(
-
         30,
-
         Number(
           options.duration || 10
         )
-
       )
-
     );
 
 
   const motion =
     options.motion ||
     "zoom_in";
+
+
+  const hook =
+    String(
+      options.hook || ""
+    )
+      .trim();
 
 
   const audioUrl =
@@ -821,6 +956,8 @@ export async function renderImageToVideo(
 
       motion,
 
+      hook,
+
       hasAudio:
         Boolean(audioUrl),
 
@@ -831,20 +968,12 @@ export async function renderImageToVideo(
   );
 
 
-  // ----------------------------------------------------------
-  // 1. UPLOAD IMAGE
-  // ----------------------------------------------------------
-
   const uploaded =
     await uploadImage(
       env,
       imageBuffer
     );
 
-
-  // ----------------------------------------------------------
-  // 2. CREATE VIDEO
-  // ----------------------------------------------------------
 
   const jobId =
     await createVideoJob(
@@ -857,14 +986,12 @@ export async function renderImageToVideo(
 
       motion,
 
+      hook,
+
       audioUrl
 
     );
 
-
-  // ----------------------------------------------------------
-  // 3. WAIT
-  // ----------------------------------------------------------
 
   await waitForVideo(
     env,
@@ -872,32 +999,11 @@ export async function renderImageToVideo(
   );
 
 
-  // ----------------------------------------------------------
-  // 4. GET URL
-  // ----------------------------------------------------------
-
   const videoUrl =
     await getDownloadUrl(
       env,
       jobId
     );
-
-
-  console.log(
-    "ATLAS_RENDER_COMPLETE:",
-    {
-
-      jobId,
-
-      motion,
-
-      hasAudio:
-        Boolean(audioUrl),
-
-      videoUrl
-
-    }
-  );
 
 
   return {
@@ -909,6 +1015,8 @@ export async function renderImageToVideo(
     duration,
 
     motion,
+
+    hook,
 
     audio:
       Boolean(audioUrl)
