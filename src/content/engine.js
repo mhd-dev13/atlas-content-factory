@@ -1,10 +1,9 @@
 // ============================================================
 // 🏭 ATLAS CONTENT ENGINE
+// Reel Director 3.0
 // ============================================================
 
-import {
-  generateAI
-} from "../ai/engine.js";
+import { generateAI } from "../ai/engine.js";
 
 
 // ============================================================
@@ -12,10 +11,9 @@ import {
 // ============================================================
 
 const CONTENT_RULES = `
-
 GENERAL:
 
-Create concise, engaging social media content.
+Create concise, engaging Instagram content.
 
 Main topics:
 
@@ -24,12 +22,11 @@ relaxation
 ASMR
 peaceful moments
 mindfulness
-nature sounds
+nature
 rain
-night
-silence
-loneliness
-reflection
+ocean
+night ambience
+cozy moments
 slow living
 
 Never make medical claims.
@@ -44,10 +41,14 @@ Do not create multiple versions.
 ENGLISH:
 
 Use natural modern English.
+
 Write like a real Instagram creator.
-Keep sentences short.
+
+Keep hooks emotionally interesting.
+
 Avoid robotic wording.
-Avoid exaggerated claims.
+
+Avoid generic motivational clichés.
 
 PERSIAN:
 
@@ -60,24 +61,25 @@ for a Persian-speaking Instagram audience.
 
 Use natural conversational Instagram Persian.
 
-Avoid robotic expressions.
+Avoid:
 
-Prefer phrases such as:
+"آرامش خود را پیدا کنید"
+"به آرامش بپردازید"
+"ذهن خود را آزاد کنید"
+"خود را رها کنید"
+"با این آرامش همراه شوید"
 
-"فقط چند لحظه مکث کن."
+Prefer:
 
-"بذار بارون چند دقیقه جای شلوغی روز رو بگیره."
+"چند لحظه از شلوغی فاصله بگیر."
+"فقط مکث کن."
+"چشم‌هات رو ببند و گوش بده."
+"بذار صدای بارون فضا رو آروم‌تر کنه."
+"گاهی فقط چند دقیقه سکوت لازمه."
 
-"گاهی فقط باید از همه‌چیز فاصله بگیری."
+Do not overuse emojis.
 
-"چشم‌هات رو ببند و چند لحظه گوش بده."
-
-"همین چند لحظه برای خودته."
-
-The Persian should feel emotional,
-human and natural.
-
-Avoid excessive emojis.
+Keep content visually and emotionally simple.
 `;
 
 
@@ -85,31 +87,27 @@ Avoid excessive emojis.
 // 💡 GENERATE IDEA
 // ============================================================
 
-export async function generateIdea(
-  env
-) {
+export async function generateIdea(env) {
 
   const messages = [
 
     {
-
-      role:
-        "system",
+      role: "system",
 
       content: `
-
 You are Atlas Content Factory.
 
 ${CONTENT_RULES}
 
-Create ONE original Instagram content idea.
+Create ONE original Instagram Reel idea.
 
-The idea must be visually simple enough
-to become a minimalist Reel.
+The idea must have strong visual potential.
+
+The hook should make someone stop scrolling.
 
 Return ONLY valid JSON.
 
-JSON:
+Structure:
 
 {
   "hook_en": "",
@@ -119,60 +117,49 @@ JSON:
   "cta": ""
 }
 
-RULES:
+Rules:
 
 hook_en:
 Maximum 10 words.
+Must feel like a real Instagram hook.
+Must create curiosity or emotion.
 
 hook_fa:
 Maximum 10 natural Persian words.
-
-The Persian hook must NOT be a literal translation.
-
-It should feel emotional and natural.
+Do not translate hook_en literally.
 
 concept:
 One concise sentence.
 
 visual:
-One clear cinematic visual direction.
+Describe one visually powerful scene.
 
 cta:
-Short and natural.
+Short natural CTA.
 
 Return JSON only.
-
-`.trim()
-
+      `.trim()
     },
 
     {
-
-      role:
-        "user",
+      role: "user",
 
       content: `
-
-Create ONE original idea for a Persian-first
-Instagram page focused on:
+Create one original Reel idea for a page focused on:
 
 calmness,
 relaxation,
 ASMR,
-peaceful moments,
-nature,
 rain,
-night,
-silence,
-reflection.
+nature,
+peaceful moments,
+slow living.
 
-The Reel should have strong emotional
-potential while remaining simple.
+Make the visual highly attractive
+for Instagram Reels.
 
 Return JSON only.
-
-`.trim()
-
+      `.trim()
     }
 
   ];
@@ -189,135 +176,6 @@ Return JSON only.
     raw,
     "IDEA"
   );
-
-}
-
-
-// ============================================================
-// 📝 GENERATE POST
-// ============================================================
-
-export async function generatePost(
-  env,
-  sourceIdea = ""
-) {
-
-  const idea =
-    sourceIdea?.trim() ||
-    "Create a fresh calm and relaxing ASMR idea.";
-
-
-  const messages = [
-
-    {
-
-      role:
-        "system",
-
-      content: `
-
-You are Atlas Content Factory.
-
-${CONTENT_RULES}
-
-Create ONE bilingual Instagram post.
-
-Return ONLY valid JSON.
-
-JSON:
-
-{
-  "hook_en": "",
-  "caption_en": "",
-  "cta_en": "",
-  "hook_fa": "",
-  "caption_fa": "",
-  "cta_fa": "",
-  "hashtags": []
-}
-
-ENGLISH:
-
-hook_en:
-Maximum 10 words.
-
-caption_en:
-Maximum 25 words.
-
-cta_en:
-Maximum 10 words.
-
-PERSIAN:
-
-hook_fa:
-Maximum 10 natural words.
-
-caption_fa:
-Maximum 30 natural words.
-
-cta_fa:
-Maximum 10 natural words.
-
-HASHTAGS:
-
-5 to 8 relevant hashtags.
-
-Mix English and Persian naturally.
-
-Do not repeat hashtags.
-
-Return JSON only.
-
-`.trim()
-
-    },
-
-    {
-
-      role:
-        "user",
-
-      content: `
-
-Create ONE Instagram post based specifically
-on this idea:
-
-${idea}
-
-Do not change the main topic.
-
-Return JSON only.
-
-`.trim()
-
-    }
-
-  ];
-
-
-  const raw =
-    await generateAI(
-      env,
-      messages
-    );
-
-
-  const post =
-    extractJSON(
-      raw,
-      "POST"
-    );
-
-
-  validatePost(
-    post
-  );
-
-
-  return formatPost(
-    post
-  );
-
 }
 
 
@@ -332,89 +190,141 @@ export async function generateReel(
 
   const idea =
     sourceIdea?.trim() ||
-    "Create a calm and relaxing ASMR Reel.";
+    "Create a calm cinematic ASMR Reel.";
 
 
   const messages = [
 
     {
-
-      role:
-        "system",
+      role: "system",
 
       content: `
-
 You are Atlas Reel Director.
 
 ${CONTENT_RULES}
 
-Create ONE production-ready
-minimalist Instagram Reel.
+Your job is to design a production-ready
+Instagram Reel.
 
-The Reel is designed for a Persian-first
-Instagram audience.
-
-The most important element of the Reel
-is the Persian ON-SCREEN TEXT.
-
-The viewer should understand the emotional
-idea of the Reel by reading the text
-on the video itself.
+The Reel must be visually powerful,
+simple and emotionally engaging.
 
 IMPORTANT:
 
-on_screen_text.fa is the PRIMARY HOOK.
-
-It must be:
-
-- Persian
-- emotional
-- natural
-- short
-- instantly understandable
-- visually suitable for 9:16
-- maximum 8 words
-- ideally 1 to 2 short lines
-
-Do NOT make it a generic CTA.
-
-Examples of the STYLE:
-
-"فقط چند لحظه مکث کن."
-
-"بعضی شب‌ها فقط سکوت می‌خوای."
-
-"بذار بارون شلوغی روز رو بشوره."
-
-"گاهی فاصله گرفتن لازمه."
-
-"امشب فقط برای خودت وقت بذار."
-
-Do NOT copy these examples.
-
-Create an original line.
-
-The English hook is secondary.
-
-Return ONLY valid JSON.
+Return ONLY one valid JSON object.
 
 No markdown.
+No explanation.
 No reasoning.
 No <think>.
-No explanation.
 No multiple versions.
 
-The Reel must contain exactly
-3 visual scenes.
+The Reel must contain exactly 3 scenes.
 
-JSON STRUCTURE:
+The Reel must have:
+
+1 strong Hook
+3 visually different scenes
+ambient audio direction
+optional voiceover
+on-screen Hook
+English caption
+Persian caption
+CTA
+hashtags
+
+HOOK:
+
+The hook is the most important element.
+
+It must make the viewer stop scrolling.
+
+Use short natural English.
+
+Good examples:
+
+"LET THE RAIN SLOW EVERYTHING DOWN."
+
+"YOU DON'T NEED TO RUSH TONIGHT."
+
+"STAY HERE FOR A FEW QUIET SECONDS."
+
+"THIS IS YOUR SIGN TO SLOW DOWN."
+
+Avoid generic phrases.
+
+Do not use clickbait.
+
+Do not make medical claims.
+
+ON-SCREEN TEXT:
+
+The English hook MUST be suitable
+for large typography on a vertical Reel.
+
+Maximum 8 words.
+
+Do not use emojis.
+
+CAPTIONS:
+
+caption_en is REQUIRED.
+
+caption_fa is REQUIRED.
+
+Neither may ever be empty.
+
+English caption:
+Maximum 30 words.
+
+Persian caption:
+Maximum 30 natural words.
+
+Persian must NOT be a literal translation.
+
+CTA:
+
+Maximum 12 words.
+
+HASHTAGS:
+
+5 to 8 relevant hashtags.
+
+Mix English and Persian naturally.
+
+SCENES:
+
+Exactly 3 scenes.
+
+Each scene must contain:
+
+visual
+camera
+motion
+duration
+
+Make every scene visually different.
+
+Do not put text inside visual descriptions.
+
+Do not put camera instructions inside visual.
+
+Do not put audio descriptions inside scenes.
+
+TOTAL DURATION:
+
+Approximately 15, 30 or 60 seconds.
+
+For this system prefer 30 seconds,
+but 10-30 seconds is acceptable
+for rendering limitations.
+
+JSON:
 
 {
   "title": "",
   "hook": "",
-  "hook_fa": "",
-
-  "duration": "10s",
+  "duration": "30s",
 
   "scenes": [
     {
@@ -460,115 +370,30 @@ JSON STRUCTURE:
   "hashtags": []
 }
 
-RULES:
-
-title:
-Maximum 6 words.
-
-hook:
-Maximum 12 English words.
-
-hook_fa:
-Maximum 10 Persian words.
-
-duration:
-Use 10s, 15s or 30s.
-
-scenes:
-Exactly 3.
-
-scene visual:
-Only describe what appears visually.
-
-camera:
-Only describe camera shot/movement.
-
-motion:
-Only describe subtle visual movement.
-
-audio:
-Describe realistic ambient sound.
-
-voiceover:
-Maximum 25 words per language.
-
-IMPORTANT:
-Voiceover is optional.
-Do not depend on voiceover.
-
-on_screen_text.en:
-Maximum 8 words.
-
-on_screen_text.fa:
-Maximum 8 Persian words.
-
-IMPORTANT:
-
-on_screen_text.fa must be the strongest
-emotional sentence in the entire Reel.
-
-It must NOT be:
-
-a title,
-a generic CTA,
-a hashtag,
-a translation of English.
-
-cta:
-Maximum 12 words.
-
-caption_en:
-Maximum 30 words.
-
-caption_fa:
-Maximum 30 Persian words.
-
-hashtags:
-5 to 8 relevant hashtags.
-
-Do not put audio descriptions inside scenes.
-
-Do not put camera instructions inside visual.
-
-Do not put voiceover inside captions.
-
-Make scenes visually different.
-
 Return JSON only.
-
-`.trim()
-
+      `.trim()
     },
 
     {
-
-      role:
-        "user",
+      role: "user",
 
       content: `
-
 Create ONE production-ready Reel
 based specifically on this idea:
 
 ${idea}
 
-Preserve the original emotional topic.
+Keep the original mood and topic.
 
-The Persian on-screen text must be
-the strongest hook.
+The final result must contain
+a strong English Hook suitable
+for large on-screen typography.
 
-The visual must support the emotion
-of the text.
-
-Avoid generic motivational quotes.
-
-Make it feel like a premium minimalist
-Persian Instagram Reel.
+caption_en and caption_fa
+must both contain real content.
 
 Return JSON only.
-
-`.trim()
-
+      `.trim()
     }
 
   ];
@@ -593,10 +418,7 @@ Return JSON only.
   );
 
 
-  return formatReel(
-    reel
-  );
-
+  return reel;
 }
 
 
@@ -639,14 +461,11 @@ function extractJSON(
   }
 
 
-  let depth =
-    0;
+  let depth = 0;
 
-  let inString =
-    false;
+  let inString = false;
 
-  let escaped =
-    false;
+  let escaped = false;
 
 
   for (
@@ -664,8 +483,7 @@ function extractJSON(
       !escaped
     ) {
 
-      escaped =
-        true;
+      escaped = true;
 
       continue;
 
@@ -683,8 +501,7 @@ function extractJSON(
     }
 
 
-    escaped =
-      false;
+    escaped = false;
 
 
     if (inString) {
@@ -693,7 +510,9 @@ function extractJSON(
 
 
     if (char === "{") {
+
       depth++;
+
     }
 
 
@@ -740,12 +559,10 @@ function extractJSON(
 
 
 // ============================================================
-// 🧹 CLEAN RAW AI OUTPUT
+// 🧹 CLEAN AI OUTPUT
 // ============================================================
 
-function cleanRaw(
-  text
-) {
+function cleanRaw(text) {
 
   return String(
     text || ""
@@ -777,19 +594,522 @@ function cleanRaw(
 
 
 // ============================================================
+// 🛡️ VALIDATE REEL
+// ============================================================
+
+function validateReel(reel) {
+
+  if (
+    !reel ||
+    typeof reel !== "object"
+  ) {
+
+    throw new Error(
+      "REEL_INVALID"
+    );
+
+  }
+
+
+  const required = [
+
+    "title",
+    "hook",
+    "duration",
+    "scenes",
+    "audio",
+    "voiceover",
+    "on_screen_text",
+    "cta",
+    "caption_en",
+    "caption_fa"
+
+  ];
+
+
+  for (
+    const field of required
+  ) {
+
+    if (
+      reel[field] === undefined ||
+      reel[field] === null
+    ) {
+
+      throw new Error(
+        `REEL_FIELD_MISSING:${field}`
+      );
+
+    }
+
+  }
+
+
+  // ----------------------------------------------------------
+  // HOOK
+  // ----------------------------------------------------------
+
+  if (
+    typeof reel.hook !== "string" ||
+    !reel.hook.trim()
+  ) {
+
+    throw new Error(
+      "REEL_HOOK_MISSING"
+    );
+
+  }
+
+
+  // ----------------------------------------------------------
+  // SCENES
+  // ----------------------------------------------------------
+
+  if (
+    !Array.isArray(
+      reel.scenes
+    )
+  ) {
+
+    throw new Error(
+      "REEL_SCENES_INVALID"
+    );
+
+  }
+
+
+  if (
+    reel.scenes.length !== 3
+  ) {
+
+    throw new Error(
+      "REEL_SCENES_COUNT_INVALID"
+    );
+
+  }
+
+
+  for (
+    const scene of reel.scenes
+  ) {
+
+    if (
+      !scene ||
+      !scene.visual ||
+      !scene.camera ||
+      !scene.motion ||
+      !scene.duration
+    ) {
+
+      throw new Error(
+        "REEL_SCENE_INCOMPLETE"
+      );
+
+    }
+
+  }
+
+
+  // ----------------------------------------------------------
+  // AUDIO
+  // ----------------------------------------------------------
+
+  if (
+    !reel.audio ||
+    typeof reel.audio !== "object"
+  ) {
+
+    reel.audio = {};
+
+  }
+
+
+  reel.audio.ambient =
+    String(
+      reel.audio.ambient || ""
+    );
+
+
+  reel.audio.effects =
+    String(
+      reel.audio.effects || ""
+    );
+
+
+  // ----------------------------------------------------------
+  // VOICEOVER
+  // ----------------------------------------------------------
+
+  if (
+    !reel.voiceover ||
+    typeof reel.voiceover !== "object"
+  ) {
+
+    reel.voiceover = {};
+
+  }
+
+
+  reel.voiceover.en =
+    String(
+      reel.voiceover.en || ""
+    );
+
+
+  reel.voiceover.fa =
+    String(
+      reel.voiceover.fa || ""
+    );
+
+
+  // ----------------------------------------------------------
+  // ON SCREEN TEXT
+  // ----------------------------------------------------------
+
+  if (
+    !reel.on_screen_text ||
+    typeof reel.on_screen_text !== "object"
+  ) {
+
+    reel.on_screen_text = {};
+
+  }
+
+
+  /*
+   * English Hook is authoritative.
+   *
+   * This guarantees the renderer
+   * always has a valid text.
+   */
+
+  reel.on_screen_text.en =
+    String(
+      reel.on_screen_text.en ||
+      reel.hook ||
+      ""
+    ).trim();
+
+
+  reel.on_screen_text.fa =
+    String(
+      reel.on_screen_text.fa || ""
+    ).trim();
+
+
+  // ----------------------------------------------------------
+  // CTA
+  // ----------------------------------------------------------
+
+  reel.cta =
+    String(
+      reel.cta || ""
+    ).trim();
+
+
+  // ----------------------------------------------------------
+  // CAPTION EN
+  // ----------------------------------------------------------
+
+  reel.caption_en =
+    String(
+      reel.caption_en || ""
+    ).trim();
+
+
+  if (!reel.caption_en) {
+
+    reel.caption_en =
+      reel.hook.trim();
+
+  }
+
+
+  // ----------------------------------------------------------
+  // CAPTION FA
+  // ----------------------------------------------------------
+
+  reel.caption_fa =
+    String(
+      reel.caption_fa || ""
+    ).trim();
+
+
+  if (!reel.caption_fa) {
+
+    reel.caption_fa =
+      "چند لحظه از شلوغی فاصله بگیر.";
+
+  }
+
+
+  // ----------------------------------------------------------
+  // HASHTAGS
+  // ----------------------------------------------------------
+
+  if (
+    !Array.isArray(
+      reel.hashtags
+    )
+  ) {
+
+    reel.hashtags = [];
+
+  }
+
+}
+
+
+// ============================================================
+// 🧾 FORMAT REEL
+// ============================================================
+
+export function formatReel(
+  reel
+) {
+
+  const scenes =
+    reel.scenes
+      .map(
+        (scene, index) => {
+
+          return [
+
+            `🎥 SCENE ${index + 1}`,
+
+            `⏱ Duration: ${scene.duration}`,
+
+            `👁 Visual: ${scene.visual}`,
+
+            `📷 Camera: ${scene.camera}`,
+
+            `🎞 Motion: ${scene.motion}`
+
+          ].join("\n");
+
+        }
+      )
+      .join("\n\n");
+
+
+  const hashtags =
+    reel.hashtags
+      .map(
+        tag => {
+
+          let value =
+            String(
+              tag || ""
+            ).trim();
+
+
+          if (
+            value &&
+            !value.startsWith("#")
+          ) {
+
+            value =
+              "#" + value;
+
+          }
+
+
+          return value;
+
+        }
+      )
+      .filter(Boolean)
+      .slice(0, 8)
+      .join(" ");
+
+
+  return [
+
+    "🎬 ATLAS REEL",
+
+    "",
+
+    `🎯 Title: ${reel.title}`,
+
+    `⚡ Hook: ${reel.hook}`,
+
+    `⏱ Duration: ${reel.duration}`,
+
+    "",
+
+    scenes,
+
+    "",
+
+    "🔊 AUDIO",
+
+    `🌧 Ambient: ${reel.audio.ambient}`,
+
+    `✨ Effects: ${reel.audio.effects}`,
+
+    "",
+
+    "🎙 VOICEOVER",
+
+    `🇬🇧 ${reel.voiceover.en}`,
+
+    `🇮🇷 ${reel.voiceover.fa}`,
+
+    "",
+
+    "🖥 ON-SCREEN TEXT",
+
+    `🇬🇧 ${reel.on_screen_text.en}`,
+
+    `🇮🇷 ${reel.on_screen_text.fa}`,
+
+    "",
+
+    `📝 CTA: ${reel.cta}`,
+
+    "",
+
+    "📦 CAPTION",
+
+    `🇬🇧 ${reel.caption_en}`,
+
+    `🇮🇷 ${reel.caption_fa}`,
+
+    "",
+
+    "🔖 HASHTAGS",
+
+    hashtags
+
+  ].join("\n");
+
+}
+
+
+// ============================================================
+// 📝 GENERATE POST
+// ============================================================
+
+export async function generatePost(
+  env,
+  sourceIdea = ""
+) {
+
+  const idea =
+    sourceIdea?.trim() ||
+    "Create a fresh calm and relaxing ASMR idea.";
+
+
+  const messages = [
+
+    {
+      role: "system",
+
+      content: `
+You are Atlas Content Factory.
+
+${CONTENT_RULES}
+
+Create ONE bilingual Instagram post.
+
+Return ONLY valid JSON.
+
+{
+  "hook_en": "",
+  "caption_en": "",
+  "cta_en": "",
+  "hook_fa": "",
+  "caption_fa": "",
+  "cta_fa": "",
+  "hashtags": []
+}
+
+All fields are REQUIRED.
+
+English:
+
+hook_en:
+Maximum 10 words.
+
+caption_en:
+Maximum 25 words.
+
+cta_en:
+Maximum 10 words.
+
+Persian:
+
+hook_fa:
+Maximum 10 natural words.
+
+caption_fa:
+Maximum 30 natural words.
+
+cta_fa:
+Maximum 10 natural words.
+
+Hashtags:
+5 to 8 relevant hashtags.
+
+Do not return empty fields.
+
+Return JSON only.
+      `.trim()
+    },
+
+    {
+      role: "user",
+
+      content: `
+Create ONE Instagram post based specifically
+on this idea:
+
+${idea}
+
+Return JSON only.
+      `.trim()
+    }
+
+  ];
+
+
+  const raw =
+    await generateAI(
+      env,
+      messages
+    );
+
+
+  const post =
+    extractJSON(
+      raw,
+      "POST"
+    );
+
+
+  validatePost(
+    post
+  );
+
+
+  return formatPost(
+    post
+  );
+
+}
+
+
+// ============================================================
 // 🛡️ VALIDATE POST
 // ============================================================
 
-function validatePost(
-  post
-) {
+function validatePost(post) {
 
   const fields = [
 
     "hook_en",
     "caption_en",
     "cta_en",
-
     "hook_fa",
     "caption_fa",
     "cta_fa"
@@ -821,253 +1141,7 @@ function validatePost(
     )
   ) {
 
-    post.hashtags =
-      [];
-
-  }
-
-}
-
-
-// ============================================================
-// 🛡️ VALIDATE REEL
-// ============================================================
-
-function validateReel(
-  reel
-) {
-
-  if (
-    !reel ||
-    typeof reel !== "object"
-  ) {
-
-    throw new Error(
-      "REEL_INVALID"
-    );
-
-  }
-
-
-  const required = [
-
-    "title",
-    "hook",
-    "duration",
-    "scenes",
-    "audio",
-    "voiceover",
-    "on_screen_text",
-    "cta"
-
-  ];
-
-
-  for (
-    const field of required
-  ) {
-
-    if (
-      reel[field] === undefined ||
-      reel[field] === null
-    ) {
-
-      throw new Error(
-        `REEL_FIELD_MISSING:${field}`
-      );
-
-    }
-
-  }
-
-
-  if (
-    !Array.isArray(
-      reel.scenes
-    )
-  ) {
-
-    throw new Error(
-      "REEL_SCENES_INVALID"
-    );
-
-  }
-
-
-  if (
-    reel.scenes.length !== 3
-  ) {
-
-    throw new Error(
-      "REEL_SCENES_COUNT_INVALID"
-    );
-
-  }
-
-
-  for (
-    const scene of reel.scenes
-  ) {
-
-    if (
-      !scene.visual ||
-      !scene.camera ||
-      !scene.motion ||
-      !scene.duration
-    ) {
-
-      throw new Error(
-        "REEL_SCENE_INCOMPLETE"
-      );
-
-    }
-
-  }
-
-
-  if (
-    !reel.audio ||
-    typeof reel.audio !== "object"
-  ) {
-
-    reel.audio = {};
-
-  }
-
-
-  if (
-    !reel.audio.ambient
-  ) {
-
-    reel.audio.ambient =
-      "";
-
-  }
-
-
-  if (
-    !reel.audio.effects
-  ) {
-
-    reel.audio.effects =
-      "";
-
-  }
-
-
-  if (
-    !reel.voiceover ||
-    typeof reel.voiceover !== "object"
-  ) {
-
-    reel.voiceover = {};
-
-  }
-
-
-  if (
-    !reel.voiceover.en
-  ) {
-
-    reel.voiceover.en =
-      "";
-
-  }
-
-
-  if (
-    !reel.voiceover.fa
-  ) {
-
-    reel.voiceover.fa =
-      "";
-
-  }
-
-
-  if (
-    !reel.on_screen_text ||
-    typeof reel.on_screen_text !== "object"
-  ) {
-
-    reel.on_screen_text = {};
-
-  }
-
-
-  if (
-    !reel.on_screen_text.en
-  ) {
-
-    reel.on_screen_text.en =
-      "";
-
-  }
-
-
-  if (
-    !reel.on_screen_text.fa
-  ) {
-
-    reel.on_screen_text.fa =
-      reel.hook_fa ||
-      "";
-
-  }
-
-
-  // ----------------------------------------------------------
-  // Important fallback
-  // ----------------------------------------------------------
-
-  if (
-    !reel.on_screen_text.fa.trim()
-  ) {
-
-    reel.on_screen_text.fa =
-      "فقط چند لحظه مکث کن.";
-
-  }
-
-
-  if (
-    !Array.isArray(
-      reel.hashtags
-    )
-  ) {
-
-    reel.hashtags =
-      [];
-
-  }
-
-
-  if (
-    typeof reel.caption_en !== "string"
-  ) {
-
-    reel.caption_en =
-      "";
-
-  }
-
-
-  if (
-    typeof reel.caption_fa !== "string"
-  ) {
-
-    reel.caption_fa =
-      "";
-
-  }
-
-
-  if (
-    typeof reel.hook_fa !== "string"
-  ) {
-
-    reel.hook_fa =
-      reel.on_screen_text.fa;
+    post.hashtags = [];
 
   }
 
@@ -1078,13 +1152,10 @@ function validateReel(
 // 🧾 FORMAT POST
 // ============================================================
 
-function formatPost(
-  post
-) {
+function formatPost(post) {
 
   const hashtags =
     post.hashtags
-
       .map(
         tag => {
 
@@ -1109,14 +1180,8 @@ function formatPost(
 
         }
       )
-
       .filter(Boolean)
-
-      .slice(
-        0,
-        8
-      )
-
+      .slice(0, 8)
       .join(" ");
 
 
@@ -1143,135 +1208,6 @@ function formatPost(
     `کپشن: ${post.caption_fa}`,
 
     `CTA: ${post.cta_fa}`,
-
-    "",
-
-    "🔖 HASHTAGS",
-
-    hashtags
-
-  ].join("\n");
-
-}
-
-
-// ============================================================
-// 🎬 FORMAT REEL
-// ============================================================
-
-function formatReel(
-  reel
-) {
-
-  const scenes =
-    reel.scenes
-
-      .map(
-        (scene, index) => {
-
-          return [
-
-            `🎥 SCENE ${index + 1}`,
-
-            `⏱ Duration: ${scene.duration}`,
-
-            `👁 Visual: ${scene.visual}`,
-
-            `📷 Camera: ${scene.camera}`,
-
-            `🎞 Motion: ${scene.motion}`
-
-          ].join("\n");
-
-        }
-      )
-
-      .join("\n\n");
-
-
-  const hashtags =
-    reel.hashtags
-
-      .map(
-        tag => {
-
-          let value =
-            String(
-              tag || ""
-            ).trim();
-
-
-          if (
-            value &&
-            !value.startsWith("#")
-          ) {
-
-            value =
-              "#" + value;
-
-          }
-
-
-          return value;
-
-        }
-      )
-
-      .filter(Boolean)
-
-      .slice(
-        0,
-        8
-      )
-
-      .join(" ");
-
-
-  return [
-
-    "🎬 ATLAS REEL 2.0",
-
-    "",
-
-    `🎯 Title: ${reel.title}`,
-
-    `⚡ Hook: ${reel.hook}`,
-
-    `🇮🇷 Persian Hook: ${reel.hook_fa || reel.on_screen_text.fa}`,
-
-    `⏱ Duration: ${reel.duration}`,
-
-    "",
-
-    scenes,
-
-    "",
-
-    "🔊 AUDIO",
-
-    `🌧 Ambient: ${reel.audio.ambient}`,
-
-    `✨ Effects: ${reel.audio.effects}`,
-
-    "",
-
-    "🖥 ON-SCREEN TEXT",
-
-    `🇬🇧 ${reel.on_screen_text.en}`,
-
-    `🇮🇷 ${reel.on_screen_text.fa}`,
-
-    "",
-
-    `📝 CTA: ${reel.cta}`,
-
-    "",
-
-    "📦 CAPTION",
-
-    `🇬🇧 ${reel.caption_en}`,
-
-    `🇮🇷 ${reel.caption_fa}`,
 
     "",
 
