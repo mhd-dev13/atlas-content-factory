@@ -1,42 +1,20 @@
 // ============================================================
 // 🎬 ATLAS REEL PIPELINE 4.0
-//
-// Idea
-//   ↓
-// Reel Director
-//   ↓
-// Clean Image
-//   ↓
-// Persian Typography
-//   ↓
-// Slow Zoom
-//   ↓
-// Caption
-//   ↓
-// Telegram
-//
-// Compatible with:
-// src/video/renderer.js 4.0
-// src/video/image.js
-// src/content/engine.js
+// Idea → Director → Image → Persian Text Overlay → Video → Caption
 // ============================================================
-
 
 import {
   generateIdea,
   generateReel
 } from "../content/engine.js";
 
-
 import {
   generateImage
 } from "../video/image.js";
 
-
 import {
   renderImageToVideo
 } from "../video/renderer.js";
-
 
 import {
   sendMessage,
@@ -78,7 +56,9 @@ async function saveJob(
 
     await env.ATLAS_KV.put(
 
-      getReelKey(chatId),
+      getReelKey(
+        chatId
+      ),
 
       JSON.stringify({
 
@@ -153,6 +133,62 @@ async function progress(
 
 
 // ============================================================
+// 🎯 GET PERSIAN HOOK
+// ============================================================
+
+function getPersianHook(
+  reel,
+  idea
+) {
+
+  const candidates = [
+
+    reel?.on_screen_text?.fa,
+
+    reel?.hook_fa,
+
+    idea?.hook_fa
+
+  ];
+
+
+  for (
+    const candidate
+    of candidates
+  ) {
+
+    const value =
+      String(
+        candidate ||
+        ""
+      )
+
+        .replace(
+          /\s+/g,
+          " "
+        )
+
+        .trim();
+
+
+    if (value) {
+
+      return value;
+
+    }
+
+  }
+
+
+  // Safe fallback.
+
+  return "چند لحظه از شلوغی فاصله بگیر.";
+
+
+}
+
+
+// ============================================================
 // 🎯 GET ENGLISH HOOK
 // ============================================================
 
@@ -169,7 +205,7 @@ function getEnglishHook(
 
     idea?.hook_en,
 
-    reel?.title
+    idea?.title
 
   ];
 
@@ -179,18 +215,10 @@ function getEnglishHook(
     of candidates
   ) {
 
-    if (
-
-      candidate &&
-
-      String(candidate).trim()
-
-    ) {
-
-      return String(
-
-        candidate
-
+    const value =
+      String(
+        candidate ||
+        ""
       )
 
         .replace(
@@ -200,77 +228,17 @@ function getEnglishHook(
 
         .trim();
 
-    }
 
-  }
+    if (value) {
 
-
-  return "LET THE RAIN SLOW EVERYTHING DOWN.";
-
-}
-
-
-// ============================================================
-// 🇮🇷 GET PERSIAN HOOK
-// ============================================================
-
-function getPersianHook(
-  reel
-) {
-
-  const candidates = [
-
-    reel?.on_screen_text?.fa,
-
-    reel?.hook_fa,
-
-    reel?.persian_hook,
-
-    reel?.caption_fa
-
-  ];
-
-
-  for (
-    const candidate
-    of candidates
-  ) {
-
-    if (
-
-      candidate &&
-
-      String(candidate).trim()
-
-    ) {
-
-      return String(
-
-        candidate
-
-      )
-
-        .replace(
-          /\s+/g,
-          " "
-        )
-
-        .trim();
+      return value;
 
     }
 
   }
 
 
-  /*
-   * Safe fallback.
-   *
-   * This guarantees that the renderer
-   * receives Persian text even if the AI
-   * forgets to generate on_screen_text.fa.
-   */
-
-  return "چند لحظه از شلوغی فاصله بگیر.";
+  return "";
 
 }
 
@@ -285,15 +253,11 @@ function getVisual(
 ) {
 
   if (
-
     reel?.scenes?.[0]?.visual
-
   ) {
 
     return String(
-
       reel.scenes[0].visual
-
     ).trim();
 
   }
@@ -304,9 +268,7 @@ function getVisual(
   ) {
 
     return String(
-
       idea.visual
-
     ).trim();
 
   }
@@ -317,9 +279,7 @@ function getVisual(
   ) {
 
     return String(
-
       idea.concept
-
     ).trim();
 
   }
@@ -327,9 +287,11 @@ function getVisual(
 
   return [
 
-    "A peaceful cinematic nature scene",
+    "A cinematic peaceful nature scene",
 
-    "with realistic lighting and subtle atmosphere."
+    "with realistic lighting,",
+
+    "soft atmosphere and subtle movement."
 
   ].join(" ");
 
@@ -353,17 +315,9 @@ function buildImagePrompt(
 
 
   const camera =
-
     reel?.scenes?.[0]?.camera ||
 
     "cinematic medium-wide shot";
-
-
-  const motion =
-
-    reel?.scenes?.[0]?.motion ||
-
-    "subtle natural movement";
 
 
   return `
@@ -379,10 +333,6 @@ CAMERA:
 
 ${camera}
 
-MOTION CONCEPT:
-
-${motion}
-
 STYLE:
 
 premium cinematic photography,
@@ -393,23 +343,20 @@ subtle depth of field,
 high-end editorial photography,
 emotionally calming,
 visually rich,
-premium Instagram aesthetic,
-natural colors,
-professional composition.
+professional Instagram composition.
 
 COMPOSITION:
 
 Vertical 9:16.
 
-Designed specifically for a 1080x1920 Reel.
+Designed for a 1080x1920 Reel.
 
 Keep the main subject visually interesting.
 
-Keep the upper portion of the image
-relatively clean and visually calm.
+Leave the upper portion visually calm.
 
-Leave negative space in the upper area
-for future Persian typography.
+The upper area must have enough negative space
+for a Persian headline to be added later.
 
 IMPORTANT:
 
@@ -427,18 +374,16 @@ DO NOT generate watermarks.
 
 DO NOT generate UI elements.
 
-DO NOT place typography in the image.
+DO NOT generate typography.
 
-The final image must contain
-ONLY the cinematic visual.
+The image must remain completely clean.
 
 HEADLINE SPACE:
 
-Keep approximately the upper 25 percent
-visually calm.
+Keep the upper 25 percent relatively uncluttered.
 
-Do not place important objects directly
-behind the future headline.
+Do not place important objects directly behind
+the future Persian headline.
 
 `.trim();
 
@@ -446,7 +391,7 @@ behind the future headline.
 
 
 // ============================================================
-// 📝 BUILD FINAL CAPTION
+// 📝 BUILD CAPTION
 // ============================================================
 
 function buildCaption(
@@ -454,44 +399,32 @@ function buildCaption(
 ) {
 
   const english =
-
     String(
 
       reel?.caption_en ||
 
       reel?.hook ||
 
-      "Take a quiet moment."
+      ""
 
-    )
-
-      .trim();
+    ).trim();
 
 
   const persian =
-
     String(
 
       reel?.caption_fa ||
 
       "چند لحظه از شلوغی فاصله بگیر."
 
-    )
-
-      .trim();
+    ).trim();
 
 
   const cta =
-
     String(
-
       reel?.cta ||
-
       ""
-
-    )
-
-      .trim();
+    ).trim();
 
 
   const hashtags =
@@ -500,15 +433,17 @@ function buildCaption(
       reel?.hashtags
     )
 
-      ? reel.hashtags
+      ?
+
+        reel.hashtags
 
           .map(
             tag => {
 
               let value =
-
                 String(
-                  tag || ""
+                  tag ||
+                  ""
                 ).trim();
 
 
@@ -516,12 +451,15 @@ function buildCaption(
 
                 value &&
 
-                !value.startsWith("#")
+                !value.startsWith(
+                  "#"
+                )
 
               ) {
 
                 value =
-                  "#" + value;
+                  "#" +
+                  value;
 
               }
 
@@ -529,18 +467,25 @@ function buildCaption(
               return value;
 
             }
+
           )
 
-          .filter(Boolean)
+          .filter(
+            Boolean
+          )
 
           .slice(
             0,
             8
           )
 
-          .join(" ")
+          .join(
+            " "
+          )
 
-      : "";
+      :
+
+        "";
 
 
   return [
@@ -564,18 +509,23 @@ function buildCaption(
   ]
 
     .filter(
-
       value =>
 
-        value !== undefined &&
+        value !==
+          undefined &&
 
-        value !== null &&
+        value !==
+          null &&
 
-        String(value).trim() !== ""
+        String(
+          value
+        ).trim() !== ""
 
     )
 
-    .join("\n")
+    .join(
+      "\n"
+    )
 
     .trim();
 
@@ -591,9 +541,9 @@ function parseDuration(
 ) {
 
   const match =
-
     String(
-      value || ""
+      value ||
+      ""
     ).match(
       /(\d+)/
     );
@@ -626,7 +576,7 @@ function parseDuration(
 
 
 // ============================================================
-// 🧠 CREATE REEL
+// 🚀 CREATE REEL
 // ============================================================
 
 export async function createReel(
@@ -669,13 +619,9 @@ export async function createReel(
 
 
     await saveJob(
-
       env,
-
       chatId,
-
       job
-
     );
 
 
@@ -701,7 +647,6 @@ export async function createReel(
 
 
     const idea =
-
       await generateIdea(
         env
       );
@@ -723,7 +668,7 @@ export async function createReel(
 
 
     // ========================================================
-    // 2️⃣ REEL DIRECTOR
+    // 2️⃣ DIRECTOR
     // ========================================================
 
     job.status =
@@ -751,7 +696,7 @@ export async function createReel(
 
         "🎯 مرحله 2/5",
 
-        "Atlas Reel Director در حال طراحی Reel...",
+        "Atlas Reel Director...",
 
         "",
 
@@ -765,7 +710,6 @@ export async function createReel(
 
 
     const reel =
-
       await generateReel(
 
         env,
@@ -777,12 +721,17 @@ export async function createReel(
       );
 
 
-    // ========================================================
-    // 🎯 HOOKS
-    // ========================================================
+    const persianHook =
+      getPersianHook(
+
+        reel,
+
+        idea
+
+      );
+
 
     const englishHook =
-
       getEnglishHook(
 
         reel,
@@ -792,23 +741,16 @@ export async function createReel(
       );
 
 
-    const persianHook =
-
-      getPersianHook(
-        reel
-      );
-
-
     job.reel =
       reel;
 
 
+    job.hook =
+      persianHook;
+
+
     job.englishHook =
       englishHook;
-
-
-    job.persianHook =
-      persianHook;
 
 
     await saveJob(
@@ -855,8 +797,6 @@ export async function createReel(
 
         "",
 
-        `🎯 ${englishHook}`,
-
         `🇮🇷 ${persianHook}`
 
       ].join("\n")
@@ -865,7 +805,6 @@ export async function createReel(
 
 
     const imagePrompt =
-
       buildImagePrompt(
 
         reel,
@@ -876,7 +815,6 @@ export async function createReel(
 
 
     const imageBuffer =
-
       await generateImage(
 
         env,
@@ -886,7 +824,13 @@ export async function createReel(
       );
 
 
-    if (!imageBuffer) {
+    if (
+
+      !imageBuffer ||
+
+      !imageBuffer.byteLength
+
+    ) {
 
       throw new Error(
         "IMAGE_GENERATION_EMPTY"
@@ -922,10 +866,6 @@ export async function createReel(
       "rendering";
 
 
-    job.renderStartedAt =
-      Date.now();
-
-
     await saveJob(
 
       env,
@@ -957,7 +897,11 @@ export async function createReel(
 
         "🔍 Slow Zoom",
 
-        "📱 1080×1920"
+        "📱 1080×1920",
+
+        "",
+
+        "⏳ در حال رندر..."
 
       ].join("\n")
 
@@ -965,7 +909,6 @@ export async function createReel(
 
 
     const duration =
-
       parseDuration(
 
         reel?.duration
@@ -973,19 +916,11 @@ export async function createReel(
       );
 
 
-    /*
-     * IMPORTANT:
-     *
-     * Persian text is explicitly passed
-     * to renderer.
-     *
-     * Renderer 4.0 expects:
-     *
-     * options.persianText
-     */
+    const renderStartedAt =
+      Date.now();
+
 
     const rendered =
-
       await renderImageToVideo(
 
         env,
@@ -1000,37 +935,31 @@ export async function createReel(
             "zoom_in",
 
           persianText:
-            persianHook,
-
-          audioUrl:
-            env?.ATLAS_AUDIO_URL || ""
+            persianHook
 
         }
 
       );
 
 
-    if (
+    const renderSeconds =
+      Math.round(
 
-      !rendered ||
+        (
+          Date.now() -
+          renderStartedAt
 
-      !rendered.videoUrl
+        ) / 1000
 
-    ) {
-
-      throw new Error(
-        "VIDEO_RENDER_OUTPUT_MISSING"
       );
-
-    }
 
 
     job.video =
       rendered;
 
 
-    job.renderCompletedAt =
-      Date.now();
+    job.renderSeconds =
+      renderSeconds;
 
 
     await saveJob(
@@ -1052,17 +981,6 @@ export async function createReel(
       "caption";
 
 
-    const caption =
-
-      buildCaption(
-        reel
-      );
-
-
-    job.caption =
-      caption;
-
-
     await saveJob(
 
       env,
@@ -1072,6 +990,16 @@ export async function createReel(
       job
 
     );
+
+
+    const caption =
+      buildCaption(
+        reel
+      );
+
+
+    job.caption =
+      caption;
 
 
     await progress(
@@ -1088,9 +1016,11 @@ export async function createReel(
 
         "",
 
-        "🎬 ویدیو ساخته شد",
+        `🇮🇷 متن روی ویدیو: ${persianHook}`,
 
-        "📝 کپشن آماده شد",
+        `⏱ زمان رندر: ${renderSeconds}s`,
+
+        "",
 
         "📤 در حال ارسال به تلگرام..."
 
@@ -1102,6 +1032,17 @@ export async function createReel(
     // ========================================================
     // 📤 SEND VIDEO
     // ========================================================
+
+    if (
+      !rendered?.videoUrl
+    ) {
+
+      throw new Error(
+        "RENDER_VIDEO_URL_MISSING"
+      );
+
+    }
+
 
     await sendVideo(
 
@@ -1147,11 +1088,13 @@ export async function createReel(
 
         chatId,
 
-        englishHook,
-
         persianHook,
 
+        englishHook,
+
         duration,
+
+        renderSeconds,
 
         caption,
 
@@ -1172,12 +1115,10 @@ export async function createReel(
 
       reel,
 
-      englishHook,
-
-      persianHook,
-
       hook:
-        englishHook,
+        persianHook,
+
+      englishHook,
 
       caption,
 
@@ -1188,16 +1129,11 @@ export async function createReel(
 
   } catch (error) {
 
-    // ========================================================
-    // ❌ FAILURE
-    // ========================================================
-
     console.error(
 
       "ATLAS_REEL_PIPELINE_ERROR:",
 
       error?.stack ||
-
       error
 
     );
@@ -1208,9 +1144,7 @@ export async function createReel(
 
 
     job.error =
-
       error?.message ||
-
       String(error);
 
 
@@ -1247,12 +1181,6 @@ export async function createReel(
 
           "",
 
-          "📌 مرحله:",
-
-          job.status,
-
-          "",
-
           "💡 Reel قبلی دست‌نخورده باقی می‌ماند."
 
         ].join("\n")
@@ -1260,16 +1188,15 @@ export async function createReel(
       );
 
     } catch (
-      notificationError
+      notifyError
     ) {
 
       console.error(
 
-        "ATLAS_FAILURE_NOTIFICATION_ERROR:",
+        "ATLAS_FAILURE_NOTIFY_ERROR:",
 
-        notificationError?.message ||
-
-        notificationError
+        notifyError?.message ||
+        notifyError
 
       );
 
@@ -1282,9 +1209,7 @@ export async function createReel(
         false,
 
       error:
-
         error?.message ||
-
         String(error)
 
     };
