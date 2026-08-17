@@ -1,34 +1,18 @@
 // ============================================================
 // 🎬 ATLAS VIDEO RENDERER 4.0
-// Persian Hook Typography via ffmpeg-micro @text-overlay
-// No drawtext
-// Slow Zoom
-// 1080x1920
+// Persian ASS Typography + Slow Zoom
+// FFmpeg Micro
+//
+// Pipeline:
+// Image → Scale/Crop → Zoom → ASS Persian Subtitle → MP4
+//
+// IMPORTANT:
+// - No drawtext
+// - No simultaneous -vf + -filter_complex
+// - Persian rendering handled by libass
 // ============================================================
 
-const BASE_URL =
-  "https://api.ffmpeg-micro.com";
-
-const VIDEO_WIDTH =
-  1080;
-
-const VIDEO_HEIGHT =
-  1920;
-
-const FPS =
-  30;
-
-const DEFAULT_DURATION =
-  10;
-
-const MAX_DURATION =
-  30;
-
-const POLL_INTERVAL =
-  2000;
-
-const MAX_ATTEMPTS =
-  45;
+const BASE_URL = "https://api.ffmpeg-micro.com";
 
 
 // ============================================================
@@ -36,15 +20,7 @@ const MAX_ATTEMPTS =
 // ============================================================
 
 function sleep(ms) {
-
-  return new Promise(
-    resolve =>
-      setTimeout(
-        resolve,
-        ms
-      )
-  );
-
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 
@@ -54,145 +30,191 @@ function sleep(ms) {
 
 function authHeaders(env) {
 
-  if (
-    !env?.FFMPEG_MICRO_API_KEY
-  ) {
-
-    throw new Error(
-      "FFMPEG_MICRO_API_KEY_MISSING"
-    );
-
+  if (!env?.FFMPEG_MICRO_API_KEY) {
+    throw new Error("FFMPEG_MICRO_API_KEY_MISSING");
   }
 
   return {
-
     "Authorization":
       `Bearer ${env.FFMPEG_MICRO_API_KEY}`,
 
     "Content-Type":
       "application/json"
-
   };
-
 }
 
 
 // ============================================================
-// 🧹 CLEAN PERSIAN TEXT
+// 🧹 SAFE TEXT
 // ============================================================
 
 function cleanText(value) {
 
-  return String(
-    value || ""
-  )
-
+  return String(value || "")
     .replace(/\r/g, "")
-
-    .replace(
-      /\\n/g,
-      "\n"
-    )
-
-    .replace(
-      /\n{3,}/g,
-      "\n\n"
-    )
-
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 
 }
 
 
 // ============================================================
-// 📝 NORMALIZE HOOK
+// ✂️ WRAP PERSIAN TEXT
 // ============================================================
 
-function normalizeHook(value) {
+function wrapPersian(
+  text,
+  maxChars = 24
+) {
 
-  const text =
-    cleanText(value);
+  const clean =
+    cleanText(text);
 
-  if (!text) {
-
-    return "";
-
+  if (!clean) {
+    return [];
   }
 
-  // Keep Persian text compact enough
-  // for the overlay engine.
+  const words =
+    clean.split(" ");
 
-  const lines =
-    text
-      .split("\n")
-      .map(
-        line =>
-          line
-            .replace(/\s+/g, " ")
-            .trim()
-      )
-      .filter(Boolean);
+  const lines = [];
 
-  if (
-    lines.length <= 3
-  ) {
+  let current = "";
 
-    return lines.join("\n");
+  for (const word of words) {
 
+    const candidate =
+      current
+        ? `${current} ${word}`
+        : word;
+
+    if (
+      candidate.length <=
+      maxChars
+    ) {
+
+      current =
+        candidate;
+
+    } else {
+
+      if (current) {
+        lines.push(current);
+      }
+
+      current =
+        word;
+    }
   }
 
-  return lines
-    .slice(0, 3)
-    .join("\n");
+  if (current) {
+    lines.push(current);
+  }
+
+  return lines.slice(0, 3);
+}
+
+
+// ============================================================
+// 🧾 ASS ESCAPE
+// ============================================================
+
+function escapeASS(value) {
+
+  return String(value || "")
+    .replace(/\r/g, "")
+    .replace(/\n/g, "\\N")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}");
 
 }
 
 
 // ============================================================
-// 📤 UPLOAD IMAGE
+// 🎨 BUILD ASS FILE
 // ============================================================
 
-async function uploadImage(
-  env,
-  imageBuffer
-) {
+function buildASS(hook) {
 
-  if (!imageBuffer) {
-
-    throw new Error(
-      "IMAGE_BUFFER_MISSING"
+  const lines =
+    wrapPersian(
+      hook,
+      24
     );
 
+  if (!lines.length) {
+    return "";
+  }
+
+  const text =
+    lines
+      .map(
+        line =>
+          escapeASS(line)
+      )
+      .join("\\N");
+
+  // ----------------------------------------------------------
+  // ASS uses PlayRes 1080x1920
+  // Alignment 8 = top-center
+  // MarginV = 170
+  //
+  // Font: Noto Sans Arabic
+  // The server's fontconfig/libass stack should resolve
+  // an Arabic-compatible font.
+  // ----------------------------------------------------------
+
+  return [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "PlayResX: 1080",
+    "PlayResY: 1920",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    "Style: Atlas,Noto Sans Arabic,60,&H00FFFFFF,&H00FFFFFF,&H00000000,&H70000000,-1,0,0,0,100,100,0,0,1,3,2,8,70,70,170,1",
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    `Dialogue: 0,0:00:00.00,0:30:00.00,Atlas,,0,0,0,,${text}`,
+    ""
+  ].join("\n");
+}
+
+
+// ============================================================
+// 📤 UPLOAD FILE
+// ============================================================
+
+async function uploadFile(
+  env,
+  buffer,
+  filename,
+  contentType
+) {
+
+  if (!buffer) {
+    throw new Error(
+      `UPLOAD_BUFFER_MISSING:${filename}`
+    );
   }
 
   const fileSize =
-    imageBuffer.byteLength;
-
+    buffer.byteLength;
 
   if (!fileSize) {
-
     throw new Error(
-      "IMAGE_BUFFER_EMPTY"
+      `UPLOAD_BUFFER_EMPTY:${filename}`
     );
-
   }
-
-
-  const filename =
-    `atlas-reel-${Date.now()}.png`;
-
-
-  // ----------------------------------------------------------
-  // 1. PRESIGNED URL
-  // ----------------------------------------------------------
 
   const response =
     await fetch(
       `${BASE_URL}/v1/upload/presigned-url`,
       {
-
-        method:
-          "POST",
+        method: "POST",
 
         headers:
           authHeaders(env),
@@ -202,37 +224,29 @@ async function uploadImage(
 
             filename,
 
-            contentType:
-              "image/png",
+            contentType,
 
             fileSize
 
           })
-
       }
     );
 
-
   const data =
     await response.json();
-
 
   if (!response.ok) {
 
     throw new Error(
       `FFMPEG_UPLOAD_URL_FAILED:${JSON.stringify(data)}`
     );
-
   }
-
 
   const uploadUrl =
     data?.result?.uploadUrl;
 
-
   const serverFilename =
     data?.result?.filename;
-
 
   if (
     !uploadUrl ||
@@ -242,58 +256,36 @@ async function uploadImage(
     throw new Error(
       "FFMPEG_UPLOAD_URL_INVALID"
     );
-
   }
-
-
-  // ----------------------------------------------------------
-  // 2. UPLOAD
-  // ----------------------------------------------------------
 
   const uploadResponse =
     await fetch(
       uploadUrl,
       {
-
-        method:
-          "PUT",
+        method: "PUT",
 
         headers: {
-
           "Content-Type":
-            "image/png"
-
+            contentType
         },
 
         body:
-          imageBuffer
-
+          buffer
       }
     );
 
-
-  if (
-    !uploadResponse.ok
-  ) {
+  if (!uploadResponse.ok) {
 
     throw new Error(
-      `FFMPEG_IMAGE_UPLOAD_FAILED:${uploadResponse.status}`
+      `FFMPEG_FILE_UPLOAD_FAILED:${uploadResponse.status}`
     );
-
   }
-
-
-  // ----------------------------------------------------------
-  // 3. CONFIRM
-  // ----------------------------------------------------------
 
   const confirmResponse =
     await fetch(
       `${BASE_URL}/v1/upload/confirm`,
       {
-
-        method:
-          "POST",
+        method: "POST",
 
         headers:
           authHeaders(env),
@@ -307,40 +299,30 @@ async function uploadImage(
             fileSize
 
           })
-
       }
     );
-
 
   const confirmData =
     await confirmResponse.json();
 
-
-  if (
-    !confirmResponse.ok
-  ) {
+  if (!confirmResponse.ok) {
 
     throw new Error(
       `FFMPEG_UPLOAD_CONFIRM_FAILED:${JSON.stringify(
         confirmData
       )}`
     );
-
   }
-
 
   const fileUrl =
     confirmData?.result?.fileUrl;
-
 
   if (!fileUrl) {
 
     throw new Error(
       "FFMPEG_FILE_URL_MISSING"
     );
-
   }
-
 
   return {
 
@@ -352,6 +334,52 @@ async function uploadImage(
     fileSize
 
   };
+}
+
+
+// ============================================================
+// 🖼️ UPLOAD IMAGE
+// ============================================================
+
+async function uploadImage(
+  env,
+  imageBuffer
+) {
+
+  return uploadFile(
+    env,
+    imageBuffer,
+    `atlas-image-${Date.now()}.png`,
+    "image/png"
+  );
+
+}
+
+
+// ============================================================
+// 📝 UPLOAD ASS
+// ============================================================
+
+async function uploadASS(
+  env,
+  assText
+) {
+
+  if (!assText) {
+    return null;
+  }
+
+  const assBuffer =
+    new TextEncoder().encode(
+      assText
+    ).buffer;
+
+  return uploadFile(
+    env,
+    assBuffer,
+    `atlas-hook-${Date.now()}.ass`,
+    "text/x-ass"
+  );
 
 }
 
@@ -362,260 +390,243 @@ async function uploadImage(
 
 async function createVideoJob(
   env,
-  fileUrl,
+  imageUrl,
+  assUrl,
   duration,
-  hook
+  audioUrl
 ) {
 
-  const safeHook =
-    normalizeHook(
-      hook
-    );
+  // ----------------------------------------------------------
+  // VIDEO FILTER
+  // ----------------------------------------------------------
 
+  let videoFilter = [
 
-  if (!safeHook) {
+    "scale=1080:1920:force_original_aspect_ratio=increase",
 
-    throw new Error(
-      "PERSIAN_HOOK_MISSING"
+    "crop=1080:1920",
+
+    "zoompan=" +
+      "z='min(zoom+0.0008,1.08)':" +
+      "d=900:" +
+      "x='iw/2-(iw/zoom/2)':" +
+      "y='ih/2-(ih/zoom/2)':" +
+      "s=1080x1920:" +
+      "fps=30"
+
+  ];
+
+  // ----------------------------------------------------------
+  // ASS
+  // ----------------------------------------------------------
+
+  if (assUrl) {
+
+    videoFilter.push(
+      `subtitles='${assUrl}'`
     );
 
   }
 
+  const filter =
+    videoFilter.join(",");
+
+  console.log(
+    "ATLAS_ASS_RENDER_FILTER:",
+    filter
+  );
 
   // ----------------------------------------------------------
-  // VIDEO FILTER
-  //
-  // IMPORTANT:
-  // NO drawtext here.
-  // Persian text is handled by @text-overlay.
+  // INPUT
   // ----------------------------------------------------------
 
-  const videoFilter = [
+  const inputs = [
 
-    `scale=${VIDEO_WIDTH}:${VIDEO_HEIGHT}:force_original_aspect_ratio=increase`,
+    {
+      url:
+        imageUrl,
 
-    `crop=${VIDEO_WIDTH}:${VIDEO_HEIGHT}`,
+      options: [
 
-    `zoompan=` +
-      `z='min(zoom+0.0008,1.08)':` +
-      `d=${duration * FPS}:` +
-      `x='iw/2-(iw/zoom/2)':` +
-      `y='ih/2-(ih/zoom/2)':` +
-      `s=${VIDEO_WIDTH}x${VIDEO_HEIGHT}:` +
-      `fps=${FPS}`
+        {
+          option:
+            "-loop",
 
-  ].join(",");
+          argument:
+            "1"
+        },
 
+        {
+          option:
+            "-framerate",
+
+          argument:
+            "30"
+        }
+
+      ]
+    }
+
+  ];
 
   // ----------------------------------------------------------
-  // FFMPEG OPTIONS
+  // AUDIO
+  // ----------------------------------------------------------
+
+  const hasAudio =
+    Boolean(
+      audioUrl
+    );
+
+  if (hasAudio) {
+
+    inputs.push({
+
+      url:
+        audioUrl,
+
+      options: [
+
+        {
+          option:
+            "-stream_loop",
+
+          argument:
+            "-1"
+        }
+
+      ]
+
+    });
+
+  }
+
+  // ----------------------------------------------------------
+  // OUTPUT
   // ----------------------------------------------------------
 
   const options = [
 
     {
-
       option:
         "-t",
 
       argument:
         String(duration)
-
     },
 
     {
-
       option:
         "-vf",
 
       argument:
-        videoFilter
-
+        filter
     },
 
     {
-
       option:
         "-c:v",
 
       argument:
         "libx264"
-
     },
 
     {
-
       option:
         "-preset",
 
       argument:
         "veryfast"
-
     },
 
     {
-
       option:
         "-pix_fmt",
 
       argument:
         "yuv420p"
-
     },
 
     {
-
       option:
         "-r",
 
       argument:
-        String(FPS)
-
+        "30"
     },
 
     {
+      option:
+        "-movflags",
+
+      argument:
+        "+faststart"
+    }
+
+  ];
+
+  if (hasAudio) {
+
+    options.push({
+
+      option:
+        "-c:a",
+
+      argument:
+        "aac"
+    });
+
+    options.push({
+
+      option:
+        "-b:a",
+
+      argument:
+        "128k"
+    });
+
+  } else {
+
+    options.push({
 
       option:
         "-an",
 
       argument:
         ""
+    });
 
-    },
-
-    {
-
-      option:
-        "-movflags",
-
-      argument:
-        "+faststart"
-
-    },
-
-    // --------------------------------------------------------
-    // 🇮🇷 PERSIAN TEXT OVERLAY
-    // --------------------------------------------------------
-
-    {
-
-      option:
-        "@text-overlay",
-
-      argument: {
-
-        text:
-          safeHook,
-
-        style: {
-
-          position:
-            "center",
-
-          fontSize:
-            58,
-
-          fontColor:
-            "#FFFFFF",
-
-          outlineThickness:
-            4,
-
-          outlineColor:
-            "#000000",
-
-          textWidth:
-            900
-
-        }
-
-      }
-
-    }
-
-  ];
-
-
-  const body = {
-
-    inputs: [
-
-      {
-
-        url:
-          fileUrl,
-
-        options: [
-
-          {
-
-            option:
-              "-loop",
-
-            argument:
-              "1"
-
-          },
-
-          {
-
-            option:
-              "-framerate",
-
-            argument:
-              String(FPS)
-
-          }
-
-        ]
-
-      }
-
-    ],
-
-    outputFormat:
-      "mp4",
-
-    options
-
-  };
-
-
-  console.log(
-    "ATLAS_VIDEO_JOB_BODY:",
-    JSON.stringify(
-      body,
-      null,
-      2
-    )
-  );
-
+  }
 
   // ----------------------------------------------------------
-  // CREATE JOB
+  // REQUEST
   // ----------------------------------------------------------
 
   const response =
     await fetch(
       `${BASE_URL}/v1/transcodes`,
       {
-
-        method:
-          "POST",
+        method: "POST",
 
         headers:
           authHeaders(env),
 
         body:
-          JSON.stringify(body)
+          JSON.stringify({
 
+            inputs,
+
+            outputFormat:
+              "mp4",
+
+            options
+
+          })
       }
     );
 
-
   const data =
     await response.json();
-
 
   if (!response.ok) {
 
@@ -627,37 +638,25 @@ async function createVideoJob(
     throw new Error(
       `FFMPEG_TRANSCODE_FAILED:${JSON.stringify(data)}`
     );
-
   }
 
-
   const jobId =
-    data?.result?.id ||
-    data?.id;
-
+    data?.id ||
+    data?.result?.id;
 
   if (!jobId) {
 
     throw new Error(
       "FFMPEG_JOB_ID_MISSING"
     );
-
   }
 
-
-  console.log(
-    "ATLAS_VIDEO_JOB_CREATED:",
-    jobId
-  );
-
-
   return jobId;
-
 }
 
 
 // ============================================================
-// 🔄 WAIT FOR VIDEO
+// 🔄 WAIT
 // ============================================================
 
 async function waitForVideo(
@@ -665,130 +664,85 @@ async function waitForVideo(
   jobId
 ) {
 
+  const maxAttempts =
+    90;
+
   for (
-    let attempt = 1;
-    attempt <= MAX_ATTEMPTS;
+    let attempt = 0;
+    attempt < maxAttempts;
     attempt++
   ) {
 
     await sleep(
-      POLL_INTERVAL
+      2000
     );
-
 
     const response =
       await fetch(
         `${BASE_URL}/v1/transcodes/${jobId}`,
         {
-
-          method:
-            "GET",
-
           headers: {
 
             "Authorization":
               `Bearer ${env.FFMPEG_MICRO_API_KEY}`
 
           }
-
         }
       );
 
-
     const data =
       await response.json();
-
 
     if (!response.ok) {
 
       throw new Error(
         `FFMPEG_STATUS_FAILED:${JSON.stringify(data)}`
       );
-
     }
-
 
     const status =
       String(
-
-        data?.result?.status ||
-        data?.status ||
-        ""
-
+        data?.status || ""
       ).toLowerCase();
 
-
     console.log(
-      `ATLAS_VIDEO_STATUS [${attempt}/${MAX_ATTEMPTS}]:`,
+      `ATLAS_VIDEO_STATUS [${attempt + 1}/${maxAttempts}]:`,
       status
     );
 
-
-    // --------------------------------------------------------
-    // SUCCESS
-    // --------------------------------------------------------
-
     if (
-
-      status ===
-        "completed" ||
-
-      status ===
-        "done" ||
-
-      status ===
-        "success"
-
+      status === "completed"
     ) {
 
       return data;
 
     }
 
-
-    // --------------------------------------------------------
-    // FAILURE
-    // --------------------------------------------------------
-
     if (
-
-      status ===
-        "failed" ||
-
-      status ===
-        "error" ||
-
-      status ===
-        "cancelled"
-
+      status === "failed" ||
+      status === "error" ||
+      status === "cancelled"
     ) {
 
       const message =
-        data?.result?.error_message ||
         data?.error_message ||
-        data?.result?.error ||
         data?.error ||
         JSON.stringify(data);
-
 
       throw new Error(
         `FFMPEG_RENDER_FAILED:${message}`
       );
-
     }
-
   }
-
 
   throw new Error(
     "FFMPEG_RENDER_TIMEOUT"
   );
-
 }
 
 
 // ============================================================
-// 📥 DOWNLOAD URL
+// 📥 DOWNLOAD
 // ============================================================
 
 async function getDownloadUrl(
@@ -798,59 +752,39 @@ async function getDownloadUrl(
 
   const response =
     await fetch(
-
       `${BASE_URL}/v1/transcodes/${jobId}/download?url=true`,
-
       {
-
-        method:
-          "GET",
-
         headers: {
 
           "Authorization":
             `Bearer ${env.FFMPEG_MICRO_API_KEY}`
 
         }
-
       }
-
     );
-
 
   const data =
     await response.json();
-
 
   if (!response.ok) {
 
     throw new Error(
       `FFMPEG_DOWNLOAD_FAILED:${JSON.stringify(data)}`
     );
-
   }
 
-
   const url =
-
-    data?.result?.url ||
-
     data?.url ||
-
-    data?.result?.downloadUrl;
-
+    data?.result?.url;
 
   if (!url) {
 
     throw new Error(
-      `FFMPEG_DOWNLOAD_URL_MISSING:${JSON.stringify(data)}`
+      "FFMPEG_DOWNLOAD_URL_MISSING"
     );
-
   }
 
-
   return url;
-
 }
 
 
@@ -866,86 +800,80 @@ export async function renderImageToVideo(
 
   const duration =
     Math.max(
-
       5,
-
       Math.min(
-
-        MAX_DURATION,
-
+        30,
         Number(
-          options.duration ||
-          DEFAULT_DURATION
+          options.duration || 10
         )
-
       )
-
     );
-
 
   const hook =
-    normalizeHook(
-
-      options.persianText ||
-
-      options.hook ||
-
-      options.text ||
-
-      ""
-
+    cleanText(
+      options.hook || ""
     );
 
-
-  if (!hook) {
-
-    throw new Error(
-      "PERSIAN_HOOK_MISSING"
-    );
-
-  }
-
+  const audioUrl =
+    options.audioUrl ||
+    env?.ATLAS_AUDIO_URL ||
+    "";
 
   console.log(
     "ATLAS_RENDER_START:",
     {
-
       duration,
-
       hook,
-
-      hasPersianText:
-        true,
-
-      bytes:
+      hasAudio:
+        Boolean(audioUrl),
+      imageBytes:
         imageBuffer?.byteLength
-
     }
   );
 
-
   // ----------------------------------------------------------
-  // 1️⃣ UPLOAD
+  // 1. IMAGE
   // ----------------------------------------------------------
 
-  const uploaded =
+  const uploadedImage =
     await uploadImage(
-
       env,
-
       imageBuffer
-
     );
-
 
   console.log(
     "ATLAS_IMAGE_UPLOADED:",
-    uploaded.fileUrl
+    uploadedImage.fileUrl
   );
 
+  // ----------------------------------------------------------
+  // 2. ASS
+  // ----------------------------------------------------------
+
+  let uploadedASS = null;
+
+  if (hook) {
+
+    const assText =
+      buildASS(
+        hook
+      );
+
+    uploadedASS =
+      await uploadASS(
+        env,
+        assText
+      );
+
+    console.log(
+      "ATLAS_ASS_UPLOADED:",
+      uploadedASS?.fileUrl
+    );
+
+  }
 
   // ----------------------------------------------------------
-  // 2️⃣ CREATE JOB
+  // 3. VIDEO
   // ----------------------------------------------------------
 
   const jobId =
@@ -953,57 +881,49 @@ export async function renderImageToVideo(
 
       env,
 
-      uploaded.fileUrl,
+      uploadedImage.fileUrl,
+
+      uploadedASS?.fileUrl || "",
 
       duration,
 
-      hook
+      audioUrl
 
     );
 
+  console.log(
+    "ATLAS_VIDEO_JOB_CREATED:",
+    jobId
+  );
 
   // ----------------------------------------------------------
-  // 3️⃣ WAIT
+  // 4. WAIT
   // ----------------------------------------------------------
 
   await waitForVideo(
-
     env,
-
     jobId
-
   );
 
-
   // ----------------------------------------------------------
-  // 4️⃣ DOWNLOAD
+  // 5. DOWNLOAD
   // ----------------------------------------------------------
 
   const videoUrl =
     await getDownloadUrl(
-
       env,
-
       jobId
-
     );
-
 
   console.log(
     "ATLAS_RENDER_COMPLETE:",
     {
-
       jobId,
-
+      videoUrl,
       duration,
-
-      hook,
-
-      videoUrl
-
+      hook
     }
   );
-
 
   return {
 
@@ -1013,49 +933,13 @@ export async function renderImageToVideo(
 
     duration,
 
+    motion:
+      "zoom_in",
+
     hook,
 
-    persianText:
-      hook,
-
     audio:
-      false
+      Boolean(audioUrl)
 
   };
-
-}
-
-
-// ============================================================
-// 🔁 COMPATIBILITY ALIAS
-// ============================================================
-
-export async function renderQuoteImage(
-  env,
-  imageBuffer,
-  options = {}
-) {
-
-  return renderImageToVideo(
-
-    env,
-
-    imageBuffer,
-
-    {
-
-      duration:
-        options.duration,
-
-      persianText:
-        options.text ||
-
-        options.persianText ||
-
-        ""
-
-    }
-
-  );
-
 }
