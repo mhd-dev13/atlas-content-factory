@@ -1,9 +1,19 @@
 // ============================================================
-// 🏭 ATLAS CONTENT ENGINE
-// Reel Director 3.0
+// 🏭 ATLAS CONTENT ENGINE 4.0
+// Stable JSON + Persian Hook + Reel Normalization
+//
+// Goals:
+// - Prevent REEL_JSON_INCOMPLETE
+// - Recover JSON from AI output
+// - Retry malformed AI JSON
+// - Always provide required Reel fields
+// - Persian on-screen hook is guaranteed
+// - Compatible with existing Reel Pipeline
 // ============================================================
 
-import { generateAI } from "../ai/engine.js";
+import {
+  generateAI
+} from "../ai/engine.js";
 
 
 // ============================================================
@@ -84,10 +94,787 @@ Keep content visually and emotionally simple.
 
 
 // ============================================================
+// 🧹 CLEAN RAW AI OUTPUT
+// ============================================================
+
+function cleanRaw(text) {
+
+  return String(
+    text || ""
+  )
+
+    .replace(
+      /<think>[\s\S]*?<\/think>/gi,
+      ""
+    )
+
+    .replace(
+      /<think>[\s\S]*/gi,
+      ""
+    )
+
+    .replace(
+      /<\/think>/gi,
+      ""
+    )
+
+    .replace(
+      /```json/gi,
+      ""
+    )
+
+    .replace(
+      /```JSON/gi,
+      ""
+    )
+
+    .replace(
+      /```/g,
+      ""
+    )
+
+    .trim();
+
+}
+
+
+// ============================================================
+// 🔎 EXTRACT BALANCED JSON
+// ============================================================
+
+function extractJSONObject(
+  text
+) {
+
+  const cleaned =
+    cleanRaw(text);
+
+  const start =
+    cleaned.indexOf("{");
+
+  if (start === -1) {
+
+    throw new Error(
+      "JSON_OBJECT_NOT_FOUND"
+    );
+
+  }
+
+  let depth = 0;
+
+  let inString = false;
+
+  let escaped = false;
+
+  for (
+    let i = start;
+    i < cleaned.length;
+    i++
+  ) {
+
+    const char =
+      cleaned[i];
+
+    if (
+      char === "\\" &&
+      !escaped
+    ) {
+
+      escaped = true;
+
+      continue;
+
+    }
+
+    if (
+      char === '"' &&
+      !escaped
+    ) {
+
+      inString =
+        !inString;
+
+    }
+
+    escaped = false;
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === "{") {
+
+      depth++;
+
+    }
+
+    if (char === "}") {
+
+      depth--;
+
+      if (depth === 0) {
+
+        return cleaned.slice(
+          start,
+          i + 1
+        );
+
+      }
+
+    }
+
+  }
+
+  throw new Error(
+    "JSON_OBJECT_INCOMPLETE"
+  );
+
+}
+
+
+// ============================================================
+// 🧠 PARSE JSON
+// ============================================================
+
+function parseAIJSON(
+  text,
+  type = "CONTENT"
+) {
+
+  const cleaned =
+    cleanRaw(text);
+
+  // ----------------------------------------------------------
+  // DIRECT PARSE
+  // ----------------------------------------------------------
+
+  try {
+
+    return JSON.parse(
+      cleaned
+    );
+
+  } catch {
+    // Continue.
+  }
+
+  // ----------------------------------------------------------
+  // EXTRACT OBJECT
+  // ----------------------------------------------------------
+
+  try {
+
+    const jsonText =
+      extractJSONObject(
+        cleaned
+      );
+
+    return JSON.parse(
+      jsonText
+    );
+
+  } catch (error) {
+
+    const reason =
+      error?.message ||
+      String(error);
+
+    throw new Error(
+      `${type}_JSON_INCOMPLETE:${reason}`
+    );
+
+  }
+
+}
+
+
+// ============================================================
+// 🛠️ NORMALIZE REEL
+// ============================================================
+
+function normalizeReel(
+  reel
+) {
+
+  if (
+    !reel ||
+    typeof reel !== "object"
+  ) {
+
+    throw new Error(
+      "REEL_INVALID"
+    );
+
+  }
+
+  // ----------------------------------------------------------
+  // BASIC
+  // ----------------------------------------------------------
+
+  reel.title =
+    String(
+      reel.title ||
+      "A Quiet Moment"
+    ).trim();
+
+  reel.hook =
+    String(
+      reel.hook ||
+      reel?.on_screen_text?.en ||
+      "LET THE WORLD SLOW DOWN."
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  // ----------------------------------------------------------
+  // DURATION
+  // ----------------------------------------------------------
+
+  reel.duration =
+    normalizeDuration(
+      reel.duration
+    );
+
+  // ----------------------------------------------------------
+  // SCENES
+  // ----------------------------------------------------------
+
+  if (
+    !Array.isArray(
+      reel.scenes
+    )
+  ) {
+
+    reel.scenes = [];
+
+  }
+
+  // We only need the first visual for
+  // the current single-image renderer.
+
+  if (
+    reel.scenes.length === 0
+  ) {
+
+    reel.scenes.push({
+
+      duration:
+        "10s",
+
+      visual:
+        "A cinematic peaceful rain scene in a quiet forest, soft rainfall falling over wet leaves, atmospheric mist and gentle natural light.",
+
+      camera:
+        "cinematic medium-wide shot",
+
+      motion:
+        "slow subtle push-in"
+
+    });
+
+  }
+
+  // Guarantee exactly three scenes
+  // for compatibility with the existing
+  // content contract.
+
+  while (
+    reel.scenes.length < 3
+  ) {
+
+    reel.scenes.push({
+
+      duration:
+        "10s",
+
+      visual:
+        reel.scenes[0]?.visual ||
+        "A peaceful cinematic nature scene.",
+
+      camera:
+        reel.scenes[0]?.camera ||
+        "cinematic medium-wide shot",
+
+      motion:
+        reel.scenes[0]?.motion ||
+        "slow subtle movement"
+
+    });
+
+  }
+
+  reel.scenes =
+    reel.scenes
+      .slice(0, 3)
+      .map(
+        scene => ({
+
+          duration:
+            String(
+              scene?.duration ||
+              "10s"
+            ),
+
+          visual:
+            String(
+              scene?.visual ||
+              "A peaceful cinematic nature scene."
+            ).trim(),
+
+          camera:
+            String(
+              scene?.camera ||
+              "cinematic medium-wide shot"
+            ).trim(),
+
+          motion:
+            String(
+              scene?.motion ||
+              "slow subtle movement"
+            ).trim()
+
+        })
+      );
+
+  // ----------------------------------------------------------
+  // AUDIO
+  // ----------------------------------------------------------
+
+  if (
+    !reel.audio ||
+    typeof reel.audio !== "object"
+  ) {
+
+    reel.audio = {};
+
+  }
+
+  reel.audio.ambient =
+    String(
+      reel.audio.ambient ||
+      "soft natural rain ambience"
+    ).trim();
+
+  reel.audio.effects =
+    String(
+      reel.audio.effects ||
+      "subtle natural environmental sounds"
+    ).trim();
+
+  // ----------------------------------------------------------
+  // VOICEOVER
+  // ----------------------------------------------------------
+
+  if (
+    !reel.voiceover ||
+    typeof reel.voiceover !== "object"
+  ) {
+
+    reel.voiceover = {};
+
+  }
+
+  reel.voiceover.en =
+    String(
+      reel.voiceover.en ||
+      ""
+    ).trim();
+
+  reel.voiceover.fa =
+    String(
+      reel.voiceover.fa ||
+      ""
+    ).trim();
+
+  // ----------------------------------------------------------
+  // ON SCREEN TEXT
+  // ----------------------------------------------------------
+
+  if (
+    !reel.on_screen_text ||
+    typeof reel.on_screen_text !== "object"
+  ) {
+
+    reel.on_screen_text = {};
+
+  }
+
+  // English fallback
+
+  reel.on_screen_text.en =
+    String(
+      reel.on_screen_text.en ||
+      reel.hook ||
+      "LET THE WORLD SLOW DOWN."
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  // ----------------------------------------------------------
+  // PERSIAN HOOK
+  // ----------------------------------------------------------
+
+  reel.on_screen_text.fa =
+    String(
+      reel.on_screen_text.fa ||
+      ""
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  /*
+   * IMPORTANT:
+   *
+   * The current Renderer is expected to receive
+   * a Persian hook.
+   *
+   * If AI fails to provide one, generate a safe
+   * contextual fallback instead of leaving it empty.
+   */
+
+  if (
+    !reel.on_screen_text.fa
+  ) {
+
+    reel.on_screen_text.fa =
+      createPersianFallback(
+        reel
+      );
+
+  }
+
+  // ----------------------------------------------------------
+  // CTA
+  // ----------------------------------------------------------
+
+  reel.cta =
+    String(
+      reel.cta ||
+      "Stay for a few quiet seconds."
+    ).trim();
+
+  // ----------------------------------------------------------
+  // CAPTION EN
+  // ----------------------------------------------------------
+
+  reel.caption_en =
+    String(
+      reel.caption_en ||
+      reel.hook ||
+      "A quiet moment to slow down."
+    ).trim();
+
+  // ----------------------------------------------------------
+  // CAPTION FA
+  // ----------------------------------------------------------
+
+  reel.caption_fa =
+    String(
+      reel.caption_fa ||
+      "چند لحظه از شلوغی فاصله بگیر و فقط گوش بده."
+    ).trim();
+
+  // ----------------------------------------------------------
+  // HASHTAGS
+  // ----------------------------------------------------------
+
+  if (
+    !Array.isArray(
+      reel.hashtags
+    )
+  ) {
+
+    reel.hashtags = [];
+
+  }
+
+  reel.hashtags =
+    reel.hashtags
+      .map(
+        tag =>
+          String(
+            tag || ""
+          ).trim()
+      )
+      .filter(Boolean)
+      .slice(0, 8);
+
+  return reel;
+
+}
+
+
+// ============================================================
+// 🇮🇷 PERSIAN FALLBACK
+// ============================================================
+
+function createPersianFallback(
+  reel
+) {
+
+  const text =
+    `${reel?.hook || ""} ${reel?.title || ""} ${reel?.caption_fa || ""}`
+      .toLowerCase();
+
+  if (
+    text.includes("rain") ||
+    text.includes("باران") ||
+    text.includes("rainy")
+  ) {
+
+    return "چند لحظه به صدای باران گوش بده.";
+
+  }
+
+  if (
+    text.includes("ocean") ||
+    text.includes("sea") ||
+    text.includes("دریا")
+  ) {
+
+    return "فقط چند لحظه به صدای دریا گوش بده.";
+
+  }
+
+  if (
+    text.includes("night") ||
+    text.includes("شب")
+  ) {
+
+    return "امشب فقط چند لحظه مکث کن.";
+
+  }
+
+  if (
+    text.includes("forest") ||
+    text.includes("جنگل")
+  ) {
+
+    return "بذار سکوت جنگل چند لحظه کنارت بمونه.";
+
+  }
+
+  return "چند لحظه از شلوغی فاصله بگیر.";
+
+}
+
+
+// ============================================================
+// ⏱️ NORMALIZE DURATION
+// ============================================================
+
+function normalizeDuration(
+  value
+) {
+
+  const match =
+    String(
+      value || ""
+    ).match(
+      /(\d+)/
+    );
+
+  if (!match) {
+    return "10s";
+  }
+
+  const seconds =
+    Math.max(
+      5,
+      Math.min(
+        30,
+        Number(
+          match[1]
+        )
+      )
+    );
+
+  return `${seconds}s`;
+
+}
+
+
+// ============================================================
+// 🛡️ VALIDATE REEL
+// ============================================================
+
+function validateReel(
+  reel
+) {
+
+  if (
+    !reel ||
+    typeof reel !== "object"
+  ) {
+
+    throw new Error(
+      "REEL_INVALID"
+    );
+
+  }
+
+  const required = [
+
+    "title",
+    "hook",
+    "duration",
+    "scenes",
+    "audio",
+    "voiceover",
+    "on_screen_text",
+    "cta",
+    "caption_en",
+    "caption_fa"
+
+  ];
+
+  for (
+    const field of required
+  ) {
+
+    if (
+      reel[field] === undefined ||
+      reel[field] === null
+    ) {
+
+      throw new Error(
+        `REEL_FIELD_MISSING:${field}`
+      );
+
+    }
+
+  }
+
+  if (
+    !String(
+      reel.hook
+    ).trim()
+  ) {
+
+    throw new Error(
+      "REEL_HOOK_MISSING"
+    );
+
+  }
+
+  if (
+    !Array.isArray(
+      reel.scenes
+    ) ||
+    reel.scenes.length !== 3
+  ) {
+
+    throw new Error(
+      "REEL_SCENES_INVALID"
+    );
+
+  }
+
+  for (
+    const scene of reel.scenes
+  ) {
+
+    if (
+      !scene ||
+      !scene.visual ||
+      !scene.camera ||
+      !scene.motion ||
+      !scene.duration
+    ) {
+
+      throw new Error(
+        "REEL_SCENE_INCOMPLETE"
+      );
+
+    }
+
+  }
+
+  if (
+    !reel.audio ||
+    typeof reel.audio !== "object"
+  ) {
+
+    throw new Error(
+      "REEL_AUDIO_INVALID"
+    );
+
+  }
+
+  if (
+    !reel.voiceover ||
+    typeof reel.voiceover !== "object"
+  ) {
+
+    throw new Error(
+      "REEL_VOICEOVER_INVALID"
+    );
+
+  }
+
+  if (
+    !reel.on_screen_text ||
+    typeof reel.on_screen_text !== "object"
+  ) {
+
+    throw new Error(
+      "REEL_ONSCREEN_INVALID"
+    );
+
+  }
+
+  if (
+    !reel.on_screen_text.en
+  ) {
+
+    throw new Error(
+      "REEL_ONSCREEN_EN_MISSING"
+    );
+
+  }
+
+  if (
+    !reel.on_screen_text.fa
+  ) {
+
+    throw new Error(
+      "REEL_ONSCREEN_FA_MISSING"
+    );
+
+  }
+
+  if (
+    !reel.caption_en
+  ) {
+
+    throw new Error(
+      "REEL_CAPTION_EN_MISSING"
+    );
+
+  }
+
+  if (
+    !reel.caption_fa
+  ) {
+
+    throw new Error(
+      "REEL_CAPTION_FA_MISSING"
+    );
+
+  }
+
+  return true;
+
+}
+
+
+// ============================================================
 // 💡 GENERATE IDEA
 // ============================================================
 
-export async function generateIdea(env) {
+export async function generateIdea(
+  env
+) {
 
   const messages = [
 
@@ -100,10 +887,6 @@ You are Atlas Content Factory.
 ${CONTENT_RULES}
 
 Create ONE original Instagram Reel idea.
-
-The idea must have strong visual potential.
-
-The hook should make someone stop scrolling.
 
 Return ONLY valid JSON.
 
@@ -121,31 +904,29 @@ Rules:
 
 hook_en:
 Maximum 10 words.
-Must feel like a real Instagram hook.
-Must create curiosity or emotion.
 
 hook_fa:
 Maximum 10 natural Persian words.
-Do not translate hook_en literally.
 
 concept:
 One concise sentence.
 
 visual:
-Describe one visually powerful scene.
+One visually powerful scene.
 
 cta:
 Short natural CTA.
 
 Return JSON only.
       `.trim()
+
     },
 
     {
       role: "user",
 
       content: `
-Create one original Reel idea for a page focused on:
+Create one original Reel idea for:
 
 calmness,
 relaxation,
@@ -155,15 +936,12 @@ nature,
 peaceful moments,
 slow living.
 
-Make the visual highly attractive
-for Instagram Reels.
-
 Return JSON only.
       `.trim()
+
     }
 
   ];
-
 
   const raw =
     await generateAI(
@@ -171,11 +949,66 @@ Return JSON only.
       messages
     );
 
+  try {
 
-  return extractJSON(
-    raw,
-    "IDEA"
-  );
+    return parseAIJSON(
+      raw,
+      "IDEA"
+    );
+
+  } catch (firstError) {
+
+    console.error(
+      "ATLAS_IDEA_JSON_RETRY:",
+      firstError?.message ||
+      firstError
+    );
+
+    const retryMessages = [
+
+      {
+        role: "system",
+
+        content: `
+Return ONLY valid JSON.
+
+No markdown.
+No explanation.
+No reasoning.
+
+{
+  "hook_en": "",
+  "hook_fa": "",
+  "concept": "",
+  "visual": "",
+  "cta": ""
+}
+        `.trim()
+
+      },
+
+      {
+        role: "user",
+
+        content:
+          "Create one calm cinematic Instagram Reel idea."
+      }
+
+    ];
+
+    const retryRaw =
+      await generateAI(
+        env,
+        retryMessages
+      );
+
+    return parseAIJSON(
+      retryRaw,
+      "IDEA_RETRY"
+    );
+
+  }
+
 }
 
 
@@ -192,7 +1025,6 @@ export async function generateReel(
     sourceIdea?.trim() ||
     "Create a calm cinematic ASMR Reel.";
 
-
   const messages = [
 
     {
@@ -203,15 +1035,12 @@ You are Atlas Reel Director.
 
 ${CONTENT_RULES}
 
-Your job is to design a production-ready
+Create ONE production-ready
 Instagram Reel.
-
-The Reel must be visually powerful,
-simple and emotionally engaging.
 
 IMPORTANT:
 
-Return ONLY one valid JSON object.
+Return ONLY ONE valid JSON object.
 
 No markdown.
 No explanation.
@@ -219,112 +1048,12 @@ No reasoning.
 No <think>.
 No multiple versions.
 
-The Reel must contain exactly 3 scenes.
-
-The Reel must have:
-
-1 strong Hook
-3 visually different scenes
-ambient audio direction
-optional voiceover
-on-screen Hook
-English caption
-Persian caption
-CTA
-hashtags
-
-HOOK:
-
-The hook is the most important element.
-
-It must make the viewer stop scrolling.
-
-Use short natural English.
-
-Good examples:
-
-"LET THE RAIN SLOW EVERYTHING DOWN."
-
-"YOU DON'T NEED TO RUSH TONIGHT."
-
-"STAY HERE FOR A FEW QUIET SECONDS."
-
-"THIS IS YOUR SIGN TO SLOW DOWN."
-
-Avoid generic phrases.
-
-Do not use clickbait.
-
-Do not make medical claims.
-
-ON-SCREEN TEXT:
-
-The English hook MUST be suitable
-for large typography on a vertical Reel.
-
-Maximum 8 words.
-
-Do not use emojis.
-
-CAPTIONS:
-
-caption_en is REQUIRED.
-
-caption_fa is REQUIRED.
-
-Neither may ever be empty.
-
-English caption:
-Maximum 30 words.
-
-Persian caption:
-Maximum 30 natural words.
-
-Persian must NOT be a literal translation.
-
-CTA:
-
-Maximum 12 words.
-
-HASHTAGS:
-
-5 to 8 relevant hashtags.
-
-Mix English and Persian naturally.
-
-SCENES:
-
-Exactly 3 scenes.
-
-Each scene must contain:
-
-visual
-camera
-motion
-duration
-
-Make every scene visually different.
-
-Do not put text inside visual descriptions.
-
-Do not put camera instructions inside visual.
-
-Do not put audio descriptions inside scenes.
-
-TOTAL DURATION:
-
-Approximately 15, 30 or 60 seconds.
-
-For this system prefer 30 seconds,
-but 10-30 seconds is acceptable
-for rendering limitations.
-
-JSON:
+The JSON MUST contain these fields:
 
 {
   "title": "",
   "hook": "",
-  "duration": "30s",
+  "duration": "10s",
 
   "scenes": [
     {
@@ -370,492 +1099,279 @@ JSON:
   "hashtags": []
 }
 
+STRICT RULES:
+
+hook:
+Maximum 8 English words.
+
+on_screen_text.en:
+Same English hook.
+
+on_screen_text.fa:
+REQUIRED.
+Write a short natural Persian hook.
+Maximum 10 Persian words.
+Do NOT translate word-for-word.
+
+caption_en:
+REQUIRED.
+Maximum 30 words.
+
+caption_fa:
+REQUIRED.
+Maximum 30 natural Persian words.
+
+voiceover:
+REQUIRED.
+It may be empty.
+
+audio:
+REQUIRED.
+
+hashtags:
+5 to 8 hashtags.
+
+scenes:
+Exactly 3.
+
+Each scene must contain:
+duration
+visual
+camera
+motion
+
+Do not put text inside visual descriptions.
+
+Do not use markdown.
+
 Return JSON only.
       `.trim()
+
     },
 
     {
       role: "user",
 
       content: `
-Create ONE production-ready Reel
-based specifically on this idea:
+Create ONE production-ready Reel based specifically
+on this idea:
 
 ${idea}
 
-Keep the original mood and topic.
+The Reel should feel calm,
+cinematic,
+natural,
+premium,
+and suitable for Instagram.
 
-The final result must contain
-a strong English Hook suitable
-for large on-screen typography.
+IMPORTANT:
 
-caption_en and caption_fa
-must both contain real content.
+The Persian on-screen hook is required.
 
 Return JSON only.
       `.trim()
+
     }
 
   ];
 
+  // ----------------------------------------------------------
+  // FIRST ATTEMPT
+  // ----------------------------------------------------------
 
-  const raw =
-    await generateAI(
-      env,
-      messages
-    );
-
-
-  const reel =
-    extractJSON(
-      raw,
-      "REEL"
-    );
-
-
-  validateReel(
-    reel
-  );
-
-
-  return reel;
-}
-
-
-// ============================================================
-// 🧠 EXTRACT JSON
-// ============================================================
-
-function extractJSON(
-  text,
-  type = "CONTENT"
-) {
-
-  const cleaned =
-    cleanRaw(
-      text
-    );
-
+  let raw;
 
   try {
 
-    return JSON.parse(
-      cleaned
+    raw =
+      await generateAI(
+        env,
+        messages
+      );
+
+    console.log(
+      "ATLAS_REEL_RAW_LENGTH:",
+      String(
+        raw || ""
+      ).length
     );
 
-  } catch {
-    // Continue.
+  } catch (error) {
+
+    console.error(
+      "ATLAS_REEL_AI_ERROR:",
+      error?.stack ||
+      error
+    );
+
+    throw error;
+
   }
 
+  // ----------------------------------------------------------
+  // PARSE
+  // ----------------------------------------------------------
 
-  const start =
-    cleaned.indexOf("{");
+  try {
 
+    const reel =
+      parseAIJSON(
+        raw,
+        "REEL"
+      );
 
-  if (start === -1) {
+    const normalized =
+      normalizeReel(
+        reel
+      );
 
-    throw new Error(
-      `${type}_JSON_NOT_FOUND`
+    validateReel(
+      normalized
+    );
+
+    return normalized;
+
+  } catch (firstError) {
+
+    console.error(
+      "ATLAS_REEL_JSON_RETRY:",
+      firstError?.message ||
+      firstError
     );
 
   }
 
+  // ----------------------------------------------------------
+  // JSON REPAIR REQUEST
+  // ----------------------------------------------------------
 
-  let depth = 0;
+  const repairMessages = [
 
-  let inString = false;
+    {
+      role: "system",
 
-  let escaped = false;
+      content: `
+You are a JSON repair engine.
 
+Return ONLY valid JSON.
 
-  for (
-    let i = start;
-    i < cleaned.length;
-    i++
-  ) {
+No markdown.
+No explanation.
+No reasoning.
 
-    const char =
-      cleaned[i];
+The required structure is:
 
-
-    if (
-      char === "\\" &&
-      !escaped
-    ) {
-
-      escaped = true;
-
-      continue;
-
+{
+  "title": "",
+  "hook": "",
+  "duration": "10s",
+  "scenes": [
+    {
+      "duration": "10s",
+      "visual": "",
+      "camera": "",
+      "motion": ""
+    },
+    {
+      "duration": "10s",
+      "visual": "",
+      "camera": "",
+      "motion": ""
+    },
+    {
+      "duration": "10s",
+      "visual": "",
+      "camera": "",
+      "motion": ""
     }
-
-
-    if (
-      char === '"' &&
-      !escaped
-    ) {
-
-      inString =
-        !inString;
-
-    }
-
-
-    escaped = false;
-
-
-    if (inString) {
-      continue;
-    }
-
-
-    if (char === "{") {
-
-      depth++;
-
-    }
-
-
-    if (char === "}") {
-
-      depth--;
-
-
-      if (depth === 0) {
-
-        const jsonText =
-          cleaned.slice(
-            start,
-            i + 1
-          );
-
-
-        try {
-
-          return JSON.parse(
-            jsonText
-          );
-
-        } catch {
-
-          throw new Error(
-            `${type}_JSON_INVALID`
-          );
-
-        }
-
-      }
-
-    }
-
-  }
-
-
-  throw new Error(
-    `${type}_JSON_INCOMPLETE`
-  );
-
+  ],
+  "audio": {
+    "ambient": "",
+    "effects": ""
+  },
+  "voiceover": {
+    "en": "",
+    "fa": ""
+  },
+  "on_screen_text": {
+    "en": "",
+    "fa": ""
+  },
+  "cta": "",
+  "caption_en": "",
+  "caption_fa": "",
+  "hashtags": []
 }
 
+Make every field valid.
 
-// ============================================================
-// 🧹 CLEAN AI OUTPUT
-// ============================================================
+Do not add commentary.
+      `.trim()
 
-function cleanRaw(text) {
+    },
 
-  return String(
-    text || ""
-  )
+    {
+      role: "user",
 
-    .replace(
-      /<think>[\s\S]*?<\/think>/gi,
-      ""
-    )
+      content: `
+Repair or recreate this Reel JSON.
 
-    .replace(
-      /<\/think>/gi,
-      ""
-    )
+SOURCE IDEA:
 
-    .replace(
-      /```json/gi,
-      ""
-    )
+${idea}
 
-    .replace(
-      /```/g,
-      ""
-    )
+If the previous response was incomplete,
+create the missing values yourself.
 
-    .trim();
+The Persian on-screen text MUST exist.
 
-}
+Return ONLY valid JSON.
+      `.trim()
 
-
-// ============================================================
-// 🛡️ VALIDATE REEL
-// ============================================================
-
-function validateReel(reel) {
-
-  if (
-    !reel ||
-    typeof reel !== "object"
-  ) {
-
-    throw new Error(
-      "REEL_INVALID"
-    );
-
-  }
-
-
-  const required = [
-
-    "title",
-    "hook",
-    "duration",
-    "scenes",
-    "audio",
-    "voiceover",
-    "on_screen_text",
-    "cta",
-    "caption_en",
-    "caption_fa"
+    }
 
   ];
 
+  const repairedRaw =
+    await generateAI(
+      env,
+      repairMessages
+    );
 
-  for (
-    const field of required
-  ) {
+  let repaired;
 
-    if (
-      reel[field] === undefined ||
-      reel[field] === null
-    ) {
+  try {
 
-      throw new Error(
-        `REEL_FIELD_MISSING:${field}`
+    repaired =
+      parseAIJSON(
+        repairedRaw,
+        "REEL_REPAIR"
       );
 
-    }
+  } catch (error) {
 
-  }
-
-
-  // ----------------------------------------------------------
-  // HOOK
-  // ----------------------------------------------------------
-
-  if (
-    typeof reel.hook !== "string" ||
-    !reel.hook.trim()
-  ) {
+    console.error(
+      "ATLAS_REEL_REPAIR_FAILED:",
+      error?.message ||
+      error
+    );
 
     throw new Error(
-      "REEL_HOOK_MISSING"
+      "REEL_JSON_INVALID_AFTER_REPAIR"
     );
 
   }
 
-
-  // ----------------------------------------------------------
-  // SCENES
-  // ----------------------------------------------------------
-
-  if (
-    !Array.isArray(
-      reel.scenes
-    )
-  ) {
-
-    throw new Error(
-      "REEL_SCENES_INVALID"
+  const normalized =
+    normalizeReel(
+      repaired
     );
 
-  }
+  validateReel(
+    normalized
+  );
 
-
-  if (
-    reel.scenes.length !== 3
-  ) {
-
-    throw new Error(
-      "REEL_SCENES_COUNT_INVALID"
-    );
-
-  }
-
-
-  for (
-    const scene of reel.scenes
-  ) {
-
-    if (
-      !scene ||
-      !scene.visual ||
-      !scene.camera ||
-      !scene.motion ||
-      !scene.duration
-    ) {
-
-      throw new Error(
-        "REEL_SCENE_INCOMPLETE"
-      );
-
-    }
-
-  }
-
-
-  // ----------------------------------------------------------
-  // AUDIO
-  // ----------------------------------------------------------
-
-  if (
-    !reel.audio ||
-    typeof reel.audio !== "object"
-  ) {
-
-    reel.audio = {};
-
-  }
-
-
-  reel.audio.ambient =
-    String(
-      reel.audio.ambient || ""
-    );
-
-
-  reel.audio.effects =
-    String(
-      reel.audio.effects || ""
-    );
-
-
-  // ----------------------------------------------------------
-  // VOICEOVER
-  // ----------------------------------------------------------
-
-  if (
-    !reel.voiceover ||
-    typeof reel.voiceover !== "object"
-  ) {
-
-    reel.voiceover = {};
-
-  }
-
-
-  reel.voiceover.en =
-    String(
-      reel.voiceover.en || ""
-    );
-
-
-  reel.voiceover.fa =
-    String(
-      reel.voiceover.fa || ""
-    );
-
-
-  // ----------------------------------------------------------
-  // ON SCREEN TEXT
-  // ----------------------------------------------------------
-
-  if (
-    !reel.on_screen_text ||
-    typeof reel.on_screen_text !== "object"
-  ) {
-
-    reel.on_screen_text = {};
-
-  }
-
-
-  /*
-   * English Hook is authoritative.
-   *
-   * This guarantees the renderer
-   * always has a valid text.
-   */
-
-  reel.on_screen_text.en =
-    String(
-      reel.on_screen_text.en ||
-      reel.hook ||
-      ""
-    ).trim();
-
-
-  reel.on_screen_text.fa =
-    String(
-      reel.on_screen_text.fa || ""
-    ).trim();
-
-
-  // ----------------------------------------------------------
-  // CTA
-  // ----------------------------------------------------------
-
-  reel.cta =
-    String(
-      reel.cta || ""
-    ).trim();
-
-
-  // ----------------------------------------------------------
-  // CAPTION EN
-  // ----------------------------------------------------------
-
-  reel.caption_en =
-    String(
-      reel.caption_en || ""
-    ).trim();
-
-
-  if (!reel.caption_en) {
-
-    reel.caption_en =
-      reel.hook.trim();
-
-  }
-
-
-  // ----------------------------------------------------------
-  // CAPTION FA
-  // ----------------------------------------------------------
-
-  reel.caption_fa =
-    String(
-      reel.caption_fa || ""
-    ).trim();
-
-
-  if (!reel.caption_fa) {
-
-    reel.caption_fa =
-      "چند لحظه از شلوغی فاصله بگیر.";
-
-  }
-
-
-  // ----------------------------------------------------------
-  // HASHTAGS
-  // ----------------------------------------------------------
-
-  if (
-    !Array.isArray(
-      reel.hashtags
-    )
-  ) {
-
-    reel.hashtags = [];
-
-  }
+  return normalized;
 
 }
 
@@ -891,7 +1407,6 @@ export function formatReel(
       )
       .join("\n\n");
 
-
   const hashtags =
     reel.hashtags
       .map(
@@ -901,7 +1416,6 @@ export function formatReel(
             String(
               tag || ""
             ).trim();
-
 
           if (
             value &&
@@ -913,7 +1427,6 @@ export function formatReel(
 
           }
 
-
           return value;
 
         }
@@ -921,7 +1434,6 @@ export function formatReel(
       .filter(Boolean)
       .slice(0, 8)
       .join(" ");
-
 
   return [
 
@@ -932,6 +1444,8 @@ export function formatReel(
     `🎯 Title: ${reel.title}`,
 
     `⚡ Hook: ${reel.hook}`,
+
+    `🇮🇷 Persian Hook: ${reel.on_screen_text.fa}`,
 
     `⏱ Duration: ${reel.duration}`,
 
@@ -999,7 +1513,6 @@ export async function generatePost(
     sourceIdea?.trim() ||
     "Create a fresh calm and relaxing ASMR idea.";
 
-
   const messages = [
 
     {
@@ -1055,6 +1568,7 @@ Do not return empty fields.
 
 Return JSON only.
       `.trim()
+
     },
 
     {
@@ -1068,29 +1582,91 @@ ${idea}
 
 Return JSON only.
       `.trim()
+
     }
 
   ];
 
+  let raw;
 
-  const raw =
-    await generateAI(
-      env,
-      messages
+  try {
+
+    raw =
+      await generateAI(
+        env,
+        messages
+      );
+
+  } catch (error) {
+
+    console.error(
+      "ATLAS_POST_AI_ERROR:",
+      error?.stack ||
+      error
     );
 
+    throw error;
 
-  const post =
-    extractJSON(
-      raw,
-      "POST"
-    );
+  }
 
+  let post;
+
+  try {
+
+    post =
+      parseAIJSON(
+        raw,
+        "POST"
+      );
+
+  } catch {
+
+    const retryRaw =
+      await generateAI(
+        env,
+        [
+
+          {
+            role: "system",
+
+            content: `
+Return ONLY valid JSON.
+
+{
+  "hook_en": "",
+  "caption_en": "",
+  "cta_en": "",
+  "hook_fa": "",
+  "caption_fa": "",
+  "cta_fa": "",
+  "hashtags": []
+}
+            `.trim()
+
+          },
+
+          {
+            role: "user",
+
+            content:
+              idea
+
+          }
+
+        ]
+      );
+
+    post =
+      parseAIJSON(
+        retryRaw,
+        "POST_RETRY"
+      );
+
+  }
 
   validatePost(
     post
   );
-
 
   return formatPost(
     post
@@ -1103,7 +1679,9 @@ Return JSON only.
 // 🛡️ VALIDATE POST
 // ============================================================
 
-function validatePost(post) {
+function validatePost(
+  post
+) {
 
   const fields = [
 
@@ -1115,7 +1693,6 @@ function validatePost(post) {
     "cta_fa"
 
   ];
-
 
   for (
     const field of fields
@@ -1134,7 +1711,6 @@ function validatePost(post) {
 
   }
 
-
   if (
     !Array.isArray(
       post.hashtags
@@ -1152,7 +1728,9 @@ function validatePost(post) {
 // 🧾 FORMAT POST
 // ============================================================
 
-function formatPost(post) {
+function formatPost(
+  post
+) {
 
   const hashtags =
     post.hashtags
@@ -1164,7 +1742,6 @@ function formatPost(post) {
               tag || ""
             ).trim();
 
-
           if (
             value &&
             !value.startsWith("#")
@@ -1175,7 +1752,6 @@ function formatPost(post) {
 
           }
 
-
           return value;
 
         }
@@ -1183,7 +1759,6 @@ function formatPost(post) {
       .filter(Boolean)
       .slice(0, 8)
       .join(" ");
-
 
   return [
 
