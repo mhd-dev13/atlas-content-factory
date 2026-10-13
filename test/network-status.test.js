@@ -134,5 +134,5 @@ test("successful upstream JSON with sparse operator samples is not proof of heal
   assert.equal(result.operator_count, 1);
   assert.match(result.overall_fa, /برای تأیید سلامت اینترنت کافی نیستند/);
   assert.ok(result.sources.every((source) => source.interpreted === false));
-  assert.match(formatNetworkStatusFa(result), /پاسخ منابع پایش: 8\\/8/);
+  assert.match(formatNetworkStatusFa(result), /پاسخ منابع پایش: 8/);
 });
