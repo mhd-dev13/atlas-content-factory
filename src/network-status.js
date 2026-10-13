@@ -265,7 +265,9 @@ export async function getNetworkStatus(env = {}, options = {}) {
   const arvanPayload = fetchedSources.find((source) => source.id === "arvancloud")?.payload;
   const interpreted = arvanPayload ? normalizeArvanRadar(arvanPayload) : null;
   const operators = interpreted?.operators || [];
-  const sources = fetchedSources.map(({ payload, ...source }) => source);
+  const sources = fetchedSources.map(({ payload, ...source }) => source.id === "arvancloud" && (interpreted?.operator_count || 0) > 0
+    ? { ...source, interpreted: true, note_fa: "ساختار دادهٔ ابرآروان تفسیر شد؛ اعتبار نتیجه همچنان به تازگی و تعداد مقصدهای شناخته‌شده وابسته است." }
+    : source);
   const disruptedOperators = operators.filter((item) => item.disrupted_services > 0).length;
   const result = {
     provider: "iranblock_multi_source",
