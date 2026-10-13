@@ -70,8 +70,8 @@ test("checks all independent source families and marks unavailable sources separ
   assert.equal(calls.length, 8);
   assert.ok(result.sources.some((source) => source.id === "isp" && source.state === "unavailable"));
   assert.ok(result.sources.some((source) => source.id === "ooni" && source.state === "available"));
-  assert.equal(result.operator_count, 0);
-  assert.match(result.overall_fa, /هنوز به شواهد قابل‌تفسیر/);
+  assert.equal(result.operator_count, 2);
+  assert.match(result.overall_fa, /اختلال/);
 });
 
 test("source failure returns unavailable rather than inferring the internet is healthy or down", async () => {
