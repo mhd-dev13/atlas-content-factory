@@ -10,6 +10,16 @@ function request(path, method = "GET", body) {
   });
 }
 
+test("worker serves the Persian RTL UI at the root", async () => {
+  const response = await worker.fetch(request("/"), {});
+  const html = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/html/);
+  assert.match(html, /dir="rtl"/);
+  assert.match(html, /Atlas Game Connect/);
+  assert.match(html, /api\/v1\/diagnostics/);
+});
+
 test("worker integration routes health to Game Connect", async () => {
   const response = await worker.fetch(request("/health"), {});
   assert.equal(response.status, 200);
@@ -38,4 +48,10 @@ test("worker integration routes diagnostic POSTs to Game Connect, not Telegram",
 test("worker integration answers API preflight requests", async () => {
   const response = await worker.fetch(request("/api/v1/games", "OPTIONS"), {});
   assert.equal(response.status, 204);
+});
+
+test("worker does not route unrelated OPTIONS requests into Game Connect", async () => {
+  const response = await worker.fetch(request("/unrelated", "OPTIONS"), {});
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/plain/);
 });
