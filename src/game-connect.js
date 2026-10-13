@@ -23,6 +23,7 @@ function round(value) {
 async function readBodyLimited(request, maxBytes) {
   const contentLength = request.headers.get("content-length");
   if (/^\d+$/.test(contentLength || "") && Number(contentLength) > maxBytes) {
+    try { await request.body?.cancel(); } catch {}
     return { tooLarge: true };
   }
   if (!request.body) return { text: "" };
