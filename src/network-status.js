@@ -448,7 +448,9 @@ export async function getNetworkStatus(env = {}, options = {}) {
     status: allSourcesFailed ? "unavailable" : "available",
     overall_fa: aiSummary?.summary || (allSourcesFailed
       ? "منابع پایش فعلاً دادهٔ قابل دریافت ندادند"
-      : "داده‌ها جمع‌آوری و بررسی اولیه شدند؛ برای انتخاب مسیر واقعی بازی، هنوز اندازه‌گیری از اتصال خود بازیکن لازم است."),
+      : interpreted?.status === "available" && operators.length
+        ? interpreted.overall_fa
+        : "داده‌ها جمع‌آوری و بررسی اولیه شدند؛ برای انتخاب مسیر واقعی بازی، هنوز اندازه‌گیری از اتصال خود بازیکن لازم است."),
     analysis_provider: aiSummary ? "cloudflare_workers_ai" : "rule_based_fallback",
     analysis_model: aiSummary?.model || null,
     confidence: aiSummary?.confidence || "کم",
@@ -502,7 +504,15 @@ export function formatNetworkStatusFa(data) {
   for (const finding of (data.findings_fa || []).slice(0, 3)) lines.push("• " + finding);
   lines.push("", "🧭 پیشنهادهای بعدی");
   for (const recommendation of (data.recommendations_fa || []).slice(0, 3)) lines.push("• " + recommendation);
-  lines.push("", "📡 منابع (" + data.source_available_count + "/" + data.source_count + ")");
+  if (data.operators?.length) {
+    lines.push("", "📶 اپراتورهای قابل‌شناسایی");
+    for (const operator of data.operators.slice(0, 8)) {
+      const icon = operator.disrupted_services > 0 ? "🟠" : operator.status === "دادهٔ محدود" ? "⚪️" : "🟢";
+      lines.push(icon + " " + operator.operator + ": " + operator.status +
+        " (" + operator.disrupted_services + "/" + operator.checked_services + " مقصد دارای نشانهٔ اختلال)");
+    }
+  }
+  if (data.sources?.length) lines.push("", "📡 منابع (" + data.source_available_count + "/" + data.source_count + ")");
   for (const source of data.sources || []) {
     const icon = source.state === "available" ? "🟢" : "⚪️";
     const detail = source.state === "available"
