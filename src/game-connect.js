@@ -81,6 +81,21 @@ export async function handleGameConnect(request, env = {}, options = {}) {
       id, name_fa: nameFa, platforms: platform, endpoint_label_fa: endpointLabelFa
     })) });
   }
+  const diagnosticMatch = url.pathname.match(/^\/api\/v1\/diagnostics\/([0-9a-f-]{36})$/i);
+  if (diagnosticMatch && method === "GET") {
+    if (!env.ATLAS_KV || typeof env.ATLAS_KV.get !== "function") {
+      return json({ error: "storage_unavailable", message_fa: "بازیابی نتیجه در حال حاضر در دسترس نیست." }, 503);
+    }
+    try {
+      const saved = await env.ATLAS_KV.get("atlas:game-connect:diagnostic:" + diagnosticMatch[1], "json");
+      if (!saved) return json({ error: "diagnostic_not_found", message_fa: "نتیجه‌ای با این شناسه پیدا نشد یا منقضی شده است." }, 404);
+      return json(saved);
+    } catch (error) {
+      console.error("ATLAS_GAME_CONNECT_KV_READ_FAILED", error?.name || "Error");
+      return json({ error: "storage_unavailable", message_fa: "بازیابی نتیجه در حال حاضر در دسترس نیست." }, 503);
+    }
+  }
+
   if (url.pathname !== "/api/v1/diagnostics") {
     return json({ error: "not_found", message_fa: "مسیر موردنظر پیدا نشد." }, 404);
   }
