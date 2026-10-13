@@ -33,7 +33,7 @@
   "ratelimits": [
     {
       "name": "DIAGNOSTIC_LIMITER",
-      "namespace_id": 20261013,
+      "namespace_id": "20261013",
       "simple": {
         "limit": 10,
         "period": 60
