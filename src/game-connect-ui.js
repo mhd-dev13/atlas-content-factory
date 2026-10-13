@@ -34,7 +34,7 @@ export const GAME_CONNECT_HTML = String.raw`<!doctype html>
 .dash-analysis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.analysis-box{padding:13px;border:1px solid #263952;background:#0b1628;border-radius:14px}.analysis-box strong{display:block;font-size:12px;margin-bottom:5px}.analysis-box ul{padding-right:17px;margin:0;color:var(--muted);font-size:11px}.analysis-box li+li{margin-top:4px}.dash-foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:#8194b1;font-size:10px;margin-top:12px}
 @media(prefers-reduced-motion:reduce){.live-pulse,.chart-line{animation:none}.chart-line{stroke-dashoffset:0}}
 
-@media(max-width:700px){.wrap{padding:18px 14px 38px}.top{margin-bottom:28px}.layout{grid-template-columns:1fr}.card{padding:18px}.hero p{font-size:15px}.sidecard{order:2}}
+@media(max-width:700px){.wrap{padding:18px 14px 38px}.top{margin-bottom:28px}.layout{grid-template-columns:1fr}.card{padding:18px}.hero p{font-size:15px}.sidecard{order:2}.live-dashboard{padding:15px}.dash-head h2{font-size:17px}.dash-metrics{grid-template-columns:1fr 1fr}.dash-metric:first-child{grid-column:1/-1}.source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-analysis{grid-template-columns:1fr}.live-pill{font-size:10px;padding:4px 7px}}
 </style>
 </head>
 <body>
