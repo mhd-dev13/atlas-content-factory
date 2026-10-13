@@ -14,7 +14,10 @@ export default {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
           "x-content-type-options": "nosniff",
-          "referrer-policy": "strict-origin-when-cross-origin"
+          "x-frame-options": "DENY",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "permissions-policy": "camera=(), microphone=(), geolocation=()",
+          "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
         }
       });
     }
@@ -41,6 +44,22 @@ export default {
           }
         }
       );
+    }
+
+    // If a Telegram webhook secret is configured, reject forged POSTs before parsing.
+    // Keeping this conditional preserves existing installations until the secret is set.
+    if (request.method === "POST" && env?.TELEGRAM_WEBHOOK_SECRET) {
+      const suppliedSecret = request.headers.get("x-telegram-bot-api-secret-token") || "";
+      if (suppliedSecret !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return new Response("Forbidden", {
+          status: 403,
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff"
+          }
+        });
+      }
     }
 
     try {
