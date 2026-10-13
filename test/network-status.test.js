@@ -52,6 +52,24 @@ test("network status uses short cache and falls back to stale data when source f
   assert.equal(calls, 1);
 });
 
+test("falls back to the ISP endpoint when the first documented source fails", async () => {
+  const calls = [];
+  const result = await getNetworkStatus({}, {
+    fetchImpl: async (url) => {
+      calls.push(url);
+      if (url.includes("/isp/current")) throw new Error("temporary upstream failure");
+      return new Response(JSON.stringify(fixture), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+  });
+  assert.equal(result.status, "available");
+  assert.equal(calls.length, 2);
+  assert.match(calls[0], /\/isp\/current$/);
+  assert.match(calls[1], /\/connectivity\/isp-site-matrix$/);
+});
+
 test("source failure returns unavailable rather than inferring the internet is healthy or down", async () => {
   const result = await getNetworkStatus({}, { fetchImpl: async () => { throw new Error("offline"); } });
   assert.equal(result.status, "unavailable");

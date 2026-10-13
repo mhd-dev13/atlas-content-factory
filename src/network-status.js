@@ -1,4 +1,8 @@
-const ARVAN_LATEST_URL = "https://iranblock.com/api/v1/arvancloud/latest";
+const SOURCE_URLS = [
+  "https://iranblock.com/api/v1/isp/current",
+  "https://iranblock.com/api/v1/connectivity/isp-site-matrix",
+  "https://iranblock.com/api/v1/arvancloud/latest"
+];
 const CACHE_KEY = "atlas:network-status:arvancloud:v1";
 const CACHE_TTL_SECONDS = 300;
 
@@ -53,7 +57,7 @@ function matchAlias(value, aliases) {
 }
 
 function statusFromObject(object) {
-  const status = firstString(object, ["status", "state", "health", "availability", "result", "condition", "classification", "level"]);
+  const status = firstString(object, ["status", "status_text", "health_status", "state", "health", "availability", "availability_status", "connectivity", "reachability", "result", "condition", "classification", "level"]);
   const statusLower = status.toLocaleLowerCase("fa");
   if (/offline|unavailable|down|blocked|failed|error|غیرفعال|قطع|اختلال شدید|مسدود/.test(statusLower)) return { severity: 3, label: "اختلال زیاد" };
   if (/degraded|partial|unstable|impaired|ناپایدار|اختلال متوسط|اختلال جزئی/.test(statusLower)) return { severity: 2, label: "اختلال نسبی" };
@@ -67,7 +71,7 @@ function statusFromObject(object) {
     }
   }
 
-  for (const key of ["reachable", "available", "success", "ok"]) {
+  for (const key of ["reachable", "is_reachable", "available", "is_available", "is_up", "success", "ok"]) {
     if (typeof object?.[key] === "boolean") {
       return object[key] ? { severity: 0, label: "عادی" } : { severity: 3, label: "اختلال زیاد" };
     }
@@ -83,7 +87,7 @@ function collectRecords(value, records = [], depth = 0) {
   }
 
   const label = firstString(value, [
-    "operator", "isp", "network", "datacenter", "data_center", "site", "point", "name", "title", "label", "location", "probe"
+    "operator", "isp", "isp_name", "ispName", "carrier", "carrier_name", "carrierName", "provider", "provider_name", "network_name", "networkName", "asn_name", "datacenter", "data_center", "site", "point", "name", "title", "label", "location", "probe"
   ]);
   const serviceRaw = firstString(value, [
     "service", "target", "destination", "domain", "service_name", "target_name", "destination_name"
@@ -176,34 +180,47 @@ export async function getNetworkStatus(env = {}, options = {}) {
   }
 
   const fetchImpl = options.fetchImpl || fetch;
-  try {
-    const response = await fetchImpl(ARVAN_LATEST_URL, {
-      method: "GET",
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(5000)
-    });
-    if (!response.ok) throw new Error("upstream_http_" + response.status);
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType && !contentType.includes("json")) throw new Error("upstream_not_json");
-    const payload = await response.json();
-    const normalized = normalizeArvanRadar(payload);
-    if (normalized.status !== "available") throw new Error("upstream_schema_unrecognized");
+  let lastSourceError = "no_source_attempted";
+  for (const sourceUrl of SOURCE_URLS) {
+    try {
+      const response = await fetchImpl(sourceUrl, {
+        method: "GET",
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(5000)
+      });
+      if (!response.ok) throw new Error("upstream_http_" + response.status);
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType && !contentType.toLowerCase().includes("json")) throw new Error("upstream_not_json");
+      const payload = await response.json();
+      const normalized = normalizeArvanRadar(payload);
+      if (normalized.status !== "available") throw new Error("upstream_schema_unrecognized");
 
-    const result = {
-      ...normalized,
-      fetched_at: new Date().toISOString(),
-      cache: "miss"
-    };
-    if (env.ATLAS_KV && typeof env.ATLAS_KV.put === "function") {
-      try {
-        await env.ATLAS_KV.put(CACHE_KEY, JSON.stringify(result), { expirationTtl: 3600 });
-      } catch (error) {
-        console.error("ATLAS_NETWORK_STATUS_CACHE_WRITE_FAILED", error?.name || "Error");
+      const result = {
+        ...normalized,
+        provider: sourceUrl.includes("/isp/current")
+          ? "iranblock_isp_current"
+          : sourceUrl.includes("/connectivity/isp-site-matrix")
+            ? "iranblock_connectivity_isp_site_matrix"
+            : "iranblock_arvancloud",
+        fetched_at: new Date().toISOString(),
+        cache: "miss"
+      };
+      if (env.ATLAS_KV && typeof env.ATLAS_KV.put === "function") {
+        try {
+          await env.ATLAS_KV.put(CACHE_KEY, JSON.stringify(result), { expirationTtl: 3600 });
+        } catch (error) {
+          console.error("ATLAS_NETWORK_STATUS_CACHE_WRITE_FAILED", error?.name || "Error");
+        }
       }
+      return result;
+    } catch (error) {
+      lastSourceError = error?.message || error?.name || "unknown_error";
+      console.error("ATLAS_NETWORK_STATUS_SOURCE_FAILED", sourceUrl.split("/api/v1/")[1] || "unknown_source", lastSourceError);
     }
-    return result;
+  }
+  try {
+    throw new Error(lastSourceError);
   } catch (error) {
-    console.error("ATLAS_NETWORK_STATUS_SOURCE_FAILED", error?.name || "Error");
     if (cached?.status === "available") {
       return {
         ...cached,
