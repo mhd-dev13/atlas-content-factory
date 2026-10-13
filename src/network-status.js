@@ -1,7 +1,12 @@
-const SOURCE_URLS = [
-  "https://iranblock.com/api/v1/isp/current",
-  "https://iranblock.com/api/v1/connectivity/isp-site-matrix",
-  "https://iranblock.com/api/v1/arvancloud/latest"
+const SOURCE_CONFIG = [
+  { id: "arvancloud", label_fa: "رادار ابرآروان", category: "operator", url: "https://iranblock.com/api/v1/arvancloud/latest" },
+  { id: "isp", label_fa: "پایش اپراتورها", category: "operator", url: "https://iranblock.com/api/v1/isp/current" },
+  { id: "connectivity", label_fa: "پروب دسترسی سرویس‌ها", category: "service_access", url: "https://iranblock.com/api/v1/connectivity/services" },
+  { id: "ooni", label_fa: "اندازه‌گیری‌های داخل ایران (OONI)", category: "censorship", url: "https://iranblock.com/api/v1/ooni/latest" },
+  { id: "ioda", label_fa: "سیگنال‌های قطعی (IODA)", category: "outage", url: "https://iranblock.com/api/v1/ioda/summary" },
+  { id: "cloudflare", label_fa: "کیفیت شبکه (Cloudflare Radar)", category: "network_quality", url: "https://iranblock.com/api/v1/cloudflare/quality" },
+  { id: "routing", label_fa: "مسیریابی اینترنت (RIPE)", category: "routing", url: "https://iranblock.com/api/v1/routing/metrics" },
+  { id: "source_freshness", label_fa: "تازگی منابع", category: "metadata", url: "https://iranblock.com/api/v1/status/sources" }
 ];
 const CACHE_KEY = "atlas:network-status:arvancloud:v1";
 const CACHE_TTL_SECONDS = 300;
@@ -181,6 +186,70 @@ async function readCached(env) {
   }
 }
 
+function countPayloadRows(payload) {
+  if (Array.isArray(payload)) return payload.length;
+  if (!payload || typeof payload !== "object") return 0;
+  for (const key of ["data", "items", "results", "records", "measurements", "signals", "services", "networks", "sources"]) {
+    if (Array.isArray(payload[key])) return payload[key].length;
+  }
+  return 0;
+}
+
+function extractObservedAt(payload, depth = 0) {
+  if (!payload || typeof payload !== "object" || depth > 5) return null;
+  for (const key of ["observed_at", "timestamp", "updated_at", "last_updated", "generated_at", "fetched_at", "updatedAt"]) {
+    const value = payload[key];
+    if (typeof value === "string" && Number.isFinite(Date.parse(value))) return value;
+  }
+  for (const value of Object.values(payload)) {
+    if (value && typeof value === "object") {
+      const found = extractObservedAt(value, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+async function fetchSource(config, fetchImpl) {
+  try {
+    const response = await fetchImpl(config.url, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!response.ok) throw new Error("http_" + response.status);
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType && !contentType.toLowerCase().includes("json")) throw new Error("not_json");
+    const payload = await response.json();
+    const rows = countPayloadRows(payload);
+    if (payload && typeof payload === "object" && (payload.error || payload.errors) && rows === 0) {
+      throw new Error("source_error_payload");
+    }
+    return {
+      id: config.id,
+      label_fa: config.label_fa,
+      category: config.category,
+      state: "available",
+      item_count: rows,
+      observed_at: extractObservedAt(payload),
+      interpreted: false,
+      note_fa: "داده دریافت شد؛ تا زمان نگاشت اختصاصی ساختار این منبع، از آن نتیجهٔ سلامت یا اختلال ساخته نمی‌شود."
+    };
+  } catch (error) {
+    console.error("ATLAS_NETWORK_STATUS_SOURCE_FAILED", config.id, error?.name || "Error");
+    return {
+      id: config.id,
+      label_fa: config.label_fa,
+      category: config.category,
+      state: "unavailable",
+      item_count: 0,
+      observed_at: null,
+      interpreted: false,
+      note_fa: "این منبع در این نوبت دادهٔ قابل استفاده نداد."
+    };
+  }
+}
+
 export async function getNetworkStatus(env = {}, options = {}) {
   const nowMs = Date.now();
   const cached = await readCached(env);
@@ -189,67 +258,42 @@ export async function getNetworkStatus(env = {}, options = {}) {
   }
 
   const fetchImpl = options.fetchImpl || fetch;
-  let lastSourceError = "no_source_attempted";
-  for (const sourceUrl of SOURCE_URLS) {
-    try {
-      const response = await fetchImpl(sourceUrl, {
-        method: "GET",
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(5000)
-      });
-      if (!response.ok) throw new Error("upstream_http_" + response.status);
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType && !contentType.toLowerCase().includes("json")) throw new Error("upstream_not_json");
-      const payload = await response.json();
-      const normalized = normalizeArvanRadar(payload);
-      if (normalized.status !== "available") throw new Error("upstream_schema_unrecognized");
+  const sources = await Promise.all(SOURCE_CONFIG.map((config) => fetchSource(config, fetchImpl)));
+  const sourceAvailableCount = sources.filter((source) => source.state === "available").length;
+  const allSourcesFailed = sourceAvailableCount === 0;
+  const result = {
+    provider: "iranblock_multi_source",
+    observed_at: new Date().toISOString(),
+    fetched_at: new Date().toISOString(),
+    status: allSourcesFailed ? "unavailable" : "available",
+    overall_fa: allSourcesFailed
+      ? "منابع پایش فعلاً دادهٔ قابل دریافت ندادند"
+      : "داده از چند منبع مستقل دریافت شد، اما هنوز به شواهد قابل‌تفسیر برای پیشنهاد مسیر اتصال بازی تبدیل نشده است",
+    operator_count: 0,
+    disrupted_operator_count: 0,
+    operators: [],
+    source_count: SOURCE_CONFIG.length,
+    source_available_count: sourceAvailableCount,
+    sources,
+    limitations_fa: "این‌ها داده‌های عمومی از چند نقطهٔ پایش مستقل‌اند، نه از سیم‌کارت، مودم یا مسیر واقعی بازی شما. دریافت موفق یک منبع به معنی سالم بودن اینترنت نیست؛ پینگ، جیتر و افت بستهٔ بازی تا وقتی از اتصال بازیکن اندازه‌گیری نشوند، گزارش نمی‌شوند."
+  };
 
-      const result = {
-        ...normalized,
-        provider: sourceUrl.includes("/isp/current")
-          ? "iranblock_isp_current"
-          : sourceUrl.includes("/connectivity/isp-site-matrix")
-            ? "iranblock_connectivity_isp_site_matrix"
-            : "iranblock_arvancloud",
-        fetched_at: new Date().toISOString(),
-        cache: "miss"
-      };
-      if (env.ATLAS_KV && typeof env.ATLAS_KV.put === "function") {
-        try {
-          await env.ATLAS_KV.put(CACHE_KEY, JSON.stringify(result), { expirationTtl: 3600 });
-        } catch (error) {
-          console.error("ATLAS_NETWORK_STATUS_CACHE_WRITE_FAILED", error?.name || "Error");
-        }
-      }
-      return result;
+  if (env.ATLAS_KV && typeof env.ATLAS_KV.put === "function") {
+    try {
+      await env.ATLAS_KV.put(CACHE_KEY, JSON.stringify(result), { expirationTtl: 3600 });
     } catch (error) {
-      lastSourceError = error?.message || error?.name || "unknown_error";
-      console.error("ATLAS_NETWORK_STATUS_SOURCE_FAILED", sourceUrl.split("/api/v1/")[1] || "unknown_source", lastSourceError);
+      console.error("ATLAS_NETWORK_STATUS_CACHE_WRITE_FAILED", error?.name || "Error");
     }
   }
-  try {
-    throw new Error(lastSourceError);
-  } catch (error) {
-    if (cached?.status === "available") {
-      return {
-        ...cached,
-        cache: "stale",
-        stale: true,
-        warning_fa: "دریافت تازه انجام نشد؛ آخرین دادهٔ ذخیره‌شده نمایش داده می‌شود."
-      };
-    }
+  if (allSourcesFailed && cached?.status === "available") {
     return {
-      provider: "iranblock_arvancloud",
-      observed_at: new Date().toISOString(),
-      fetched_at: null,
-      status: "unavailable",
-      overall_fa: "وضعیت فعلی قابل دریافت نیست",
-      operator_count: 0,
-      disrupted_operator_count: 0,
-      operators: [],
-      limitations_fa: "منبع داده پاسخ قابل استفاده نداد؛ این وضعیت به معنی قطعی یا سالم بودن اینترنت نیست."
+      ...cached,
+      cache: "stale",
+      stale: true,
+      warning_fa: "دریافت تازه از هیچ منبعی موفق نشد؛ آخرین دادهٔ ذخیره‌شده نمایش داده می‌شود."
     };
   }
+  return { ...result, cache: "miss" };
 }
 
 export function formatNetworkStatusFa(data) {
@@ -269,7 +313,7 @@ export function formatNetworkStatusFa(data) {
     data.overall_fa,
     ""
   ];
-  for (const operator of data.operators.slice(0, 10)) {
+  for (const operator of (data.operators || []).slice(0, 10)) {
     const icon = operator.disrupted_services > 0 ? "🟠 " : operator.status === "دادهٔ محدود" ? "⚪️ " : "🟢 ";
     lines.push(
       icon + operator.operator + ": " + operator.status +
@@ -278,6 +322,13 @@ export function formatNetworkStatusFa(data) {
     const disrupted = operator.services.filter((service) => service.status !== "عادی");
     if (disrupted.length) {
       lines.push("   موارد: " + disrupted.map((service) => service.name + " — " + service.status).join("، "));
+    }
+  }
+  if (data.sources?.length) {
+    lines.push("");
+    lines.push("منابع مستقل: " + data.source_available_count + "/" + data.source_count + " منبع پاسخ داد");
+    for (const source of data.sources.filter((item) => item.state !== "available").slice(0, 3)) {
+      lines.push("⚪️ " + source.label_fa + ": داده در دسترس نیست");
     }
   }
   lines.push("");
