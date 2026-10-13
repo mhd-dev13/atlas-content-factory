@@ -67,6 +67,6 @@ This is a website UI change on the experimental `feature/atlas-game-connect-mvp`
 
 - The website root sends a restrictive Content Security Policy, frame protection, no-sniff, no-store, referrer, and permissions-policy headers.
 - If `TELEGRAM_WEBHOOK_SECRET` is configured in the Worker environment, POST webhook requests must include Telegram's matching `X-Telegram-Bot-Api-Secret-Token` header. This is optional for backward compatibility; configure the same random secret with Telegram before relying on the protection.
-- The release workflow tests and validates the Worker bundle only. Its Wrangler step is a dry run and does not publish a deployment.
+- GitHub Actions runs tests and a Wrangler dry run. The connected Cloudflare Workers GitHub integration builds a preview for pull requests and deploys to production when the pull request is merged to `main`.
 - The full content-generation pipeline remains available through Telegram. The current website provides the network dashboard and game-access diagnostics; it does not yet expose all Reel/image/video creation workflows as browser tools.
-- A production release still requires verifying the deployed Cloudflare Worker, live bindings/rate-limit namespace, Telegram webhook settings, and a post-deploy smoke test. No production secrets are stored in this repository.
+- A production release still requires verifying the live bindings/rate-limit namespace, Telegram webhook settings, and a post-deploy smoke test. No production secrets are stored in this repository.
