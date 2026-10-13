@@ -49,10 +49,10 @@ test("network status uses short cache and falls back to stale data when source f
   const second = await getNetworkStatus({ ATLAS_KV: kv }, { fetchImpl: async () => { throw new Error("should use cache"); } });
   assert.equal(first.status, "available");
   assert.equal(second.cache, "hit");
-  assert.equal(calls, 1);
+  assert.equal(calls, 8);
 });
 
-test("falls back to the ISP endpoint when the first documented source fails", async () => {
+test("checks all independent source families and marks unavailable sources separately", async () => {
   const calls = [];
   const result = await getNetworkStatus({}, {
     fetchImpl: async (url) => {
@@ -65,15 +65,21 @@ test("falls back to the ISP endpoint when the first documented source fails", as
     }
   });
   assert.equal(result.status, "available");
-  assert.equal(calls.length, 2);
-  assert.match(calls[0], /\/isp\/current$/);
-  assert.match(calls[1], /\/connectivity\/isp-site-matrix$/);
+  assert.equal(result.source_count, 8);
+  assert.equal(result.source_available_count, 7);
+  assert.equal(calls.length, 8);
+  assert.ok(result.sources.some((source) => source.id === "isp" && source.state === "unavailable"));
+  assert.ok(result.sources.some((source) => source.id === "ooni" && source.state === "available"));
+  assert.equal(result.operator_count, 0);
+  assert.match(result.overall_fa, /هنوز به شواهد قابل‌تفسیر/);
 });
 
 test("source failure returns unavailable rather than inferring the internet is healthy or down", async () => {
   const result = await getNetworkStatus({}, { fetchImpl: async () => { throw new Error("offline"); } });
   assert.equal(result.status, "unavailable");
-  assert.match(result.overall_fa, /قابل دریافت نیست/);
+  assert.equal(result.source_available_count, 0);
+  assert.equal(result.sources.length, 8);
+  assert.match(result.overall_fa, /قابل دریافت ندادند/);
 });
 
 test("Telegram summary hides provider URLs but reports the measurement limitation", () => {
@@ -113,4 +119,19 @@ test("limited single-destination samples are not presented as healthy", () => {
   assert.match(message, /⚪️/);
   assert.match(message, /دادهٔ محدود/);
   assert.doesNotMatch(message, /🟢 آسیاتک: عادی/);
+});
+
+
+test("successful upstream JSON is not treated as proof of healthy connectivity", async () => {
+  const result = await getNetworkStatus({}, {
+    fetchImpl: async () => new Response(JSON.stringify(fixture), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })
+  });
+  assert.equal(result.status, "available");
+  assert.equal(result.operator_count, 0);
+  assert.match(result.overall_fa, /هنوز به شواهد قابل‌تفسیر/);
+  assert.ok(result.sources.every((source) => source.interpreted === false));
+  assert.match(formatNetworkStatusFa(result), /منابع مستقل: 8\/8 منبع پاسخ داد/);
 });
