@@ -3,14 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Atlas AI Content Factory - Cloudflare Workers",
+  "description": "Atlas Game Connect MVP on Cloudflare Workers (legacy content modules retained)",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "wrangler deploy --dry-run"
+    "check": "wrangler deploy --dry-run",
+    "test": "node --test"
   },
   "dependencies": {
-    "@resvg/resvg-wasm": "2.6.2"
+    "@resvg/resvg-wasm": "2.6.2",
+    "satori": "0.12.2"
   },
   "devDependencies": {
     "wrangler": "4.122.0"

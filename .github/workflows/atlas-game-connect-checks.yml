@@ -1,0 +1,32 @@
+name: Atlas Game Connect checks
+
+on:
+  push:
+    branches:
+      - feature/atlas-game-connect-mvp
+      - release/atlas-v1
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Run tests
+        run: npm test
+      - name: Validate Cloudflare Worker bundle (dry run only)
+        run: npm run check

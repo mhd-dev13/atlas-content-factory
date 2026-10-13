@@ -27,6 +27,21 @@
   ],
 
   // =========================================================
+  // 🛡️ GAME CONNECT DIAGNOSTIC RATE LIMIT
+  // 10 requests per minute per client key (Cloudflare location-local).
+  // =========================================================
+  "ratelimits": [
+    {
+      "name": "DIAGNOSTIC_LIMITER",
+      "namespace_id": "20261013",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ],
+
+  // =========================================================
   // ⚙️ OBSERVABILITY
   // =========================================================
 
