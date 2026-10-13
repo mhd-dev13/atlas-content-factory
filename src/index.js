@@ -18,15 +18,11 @@ export default {
       });
     }
 
-    // Keep preflight handling scoped to the Game Connect API.
+    // Route only Game Connect endpoints and their preflight requests to the API.
     if (
       url.pathname === "/health" ||
-      url.pathname.startsWith("/api/v1/") 
+      url.pathname.startsWith("/api/v1/")
     ) {
-      return handleGameConnect(request, env);
-    }
-
-    if (request.method === "OPTIONS" && url.pathname.startsWith("/api/v1/")) {
       return handleGameConnect(request, env);
     }
 
