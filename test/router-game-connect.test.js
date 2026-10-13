@@ -7,6 +7,14 @@ function telegramMock() {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {
     const urlText = String(url);
+    if (urlText.includes("iranblock.com")) {
+      return new Response(JSON.stringify({
+        data: [
+          { operator: "Hamrah Aval", service: "Google", score: 0 },
+          { operator: "Irancell", service: "GitHub", score: 2 }
+        ]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     if (urlText.includes("api.telegram.org")) {
       calls.push(JSON.parse(options.body || "{}"));
       return new Response(JSON.stringify({ ok: true, result: { message_id: calls.length } }), {
@@ -64,6 +72,43 @@ test("Telegram game callback uses the shared diagnostic and includes its officia
     assert.match(messages, /منبع رسمی: https:\/\/partner\.steamgames\.com/);
     assert.match(messages, /پینگ داخل بازی/);
     assert.match(messages, /شناسه نتیجه/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("Telegram network-status callback displays operator status without showing provider URL", async () => {
+  const mock = telegramMock();
+  try {
+    await routeUpdate({
+      callback_query: {
+        id: "callback-network-1",
+        data: "atlas_network_status",
+        message: { chat: { id: 77 } }
+      }
+    }, {
+      TELEGRAM_BOT_TOKEN: "test-token",
+      ATLAS_KV: memoryKV()
+    });
+    const messages = mock.calls.map((call) => call.text || "").join("\\n");
+    assert.match(messages, /🌐 وضعیت اینترنت/);
+    assert.match(messages, /همراه اول/);
+    assert.match(messages, /ایرانسل/);
+    assert.doesNotMatch(messages, /iranblock\\.com/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("Telegram /network command shows an internet status message", async () => {
+  const mock = telegramMock();
+  try {
+    await routeUpdate({ message: { chat: { id: 77 }, text: "/network" } }, {
+      TELEGRAM_BOT_TOKEN: "test-token",
+      ATLAS_KV: memoryKV()
+    });
+    const messages = mock.calls.map((call) => call.text || "").join("\\n");
+    assert.match(messages, /وضعیت اینترنت/);
   } finally {
     mock.restore();
   }

@@ -34,6 +34,11 @@ import {
   getGameCatalog
 } from "./game-connect.js";
 
+import {
+  formatNetworkStatusFa,
+  getNetworkStatus
+} from "./network-status.js";
+
 
 // ============================================================
 // ⚙️ MEMORY KEYS
@@ -124,6 +129,16 @@ async function sendMainMenu(
               callback_data:
                 "atlas_connect"
             }
+          ],
+
+          [
+            {
+              text:
+                "🌐 وضعیت اینترنت",
+
+              callback_data:
+                "atlas_network_status"
+            }
           ]
 
         ]
@@ -198,6 +213,11 @@ export async function routeUpdate(
 
     if (data === "atlas_connect") {
       await sendGameMenu(env, chatId);
+      return;
+    }
+
+    if (data === "atlas_network_status") {
+      await sendNetworkStatus(env, chatId);
       return;
     }
 
@@ -328,6 +348,11 @@ export async function routeUpdate(
 
   if (text === "/connect" || text === "/games") {
     await sendGameMenu(env, chatId);
+    return;
+  }
+
+  if (text === "/network" || text === "/internet") {
+    await sendNetworkStatus(env, chatId);
     return;
   }
 
@@ -493,6 +518,22 @@ async function checkGameForChat(env, chatId, gameId) {
   } catch (error) {
     console.error("ATLAS_GAME_CONNECT_TELEGRAM_FAILED", error?.name || "Error");
     await sendMessage(env, chatId, "⚠️ بررسی بازی ناموفق بود. لطفاً کمی بعد دوباره تلاش کن.");
+  }
+}
+
+
+// ============================================================
+// 🌐 NETWORK STATUS — ArvanCloud Radar data via IranBlock API
+// ============================================================
+
+async function sendNetworkStatus(env, chatId) {
+  await sendMessage(env, chatId, "🌐 در حال دریافت وضعیت شبکه‌های پایش‌شده...");
+  try {
+    const result = await getNetworkStatus(env);
+    await sendMessage(env, chatId, formatNetworkStatusFa(result));
+  } catch (error) {
+    console.error("ATLAS_NETWORK_STATUS_TELEGRAM_FAILED", error?.name || "Error");
+    await sendMessage(env, chatId, "⚠️ وضعیت اینترنت فعلاً قابل دریافت نیست. این به معنی سالم یا قطع بودن اینترنت نیست؛ کمی بعد دوباره تلاش کن.");
   }
 }
 

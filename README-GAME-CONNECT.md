@@ -8,6 +8,14 @@ The Telegram bot and Persian website use the same game catalog (`getGameCatalog`
 
 Each catalog entry exposes an official source URL, a Persian source label, and an explicit measurement-scope note. Steam's probe is documented by Valve's Steamworks Web API docs; Epic Games and Riot Games checks target their official public sites. These checks only measure the Worker-to-endpoint HTTP response, not in-game connectivity or the user's ISP route.
 
+## Internet status in Telegram
+
+The Telegram bot includes **🌐 وضعیت اینترنت** and supports `/network` and `/internet`. The shared endpoint `GET /api/v1/network-status` reads the public IranBlock ArvanCloud Radar feed and caches a validated normalized snapshot in the existing `ATLAS_KV` for up to five minutes. The bot intentionally displays the status and operator summary without showing a source link, as requested; the provider and limitation metadata remain in the returned API payload and project documentation.
+
+The Radar view is based on monitored points of presence and destinations, not each user's home router or mobile connection. Missing or unrecognized upstream data is reported as unavailable, never as proof that the internet is healthy. Per-operator results are only displayed when the upstream response contains records the normalizer can identify.
+
+User-reported DNS/VPN results are deliberately a separate follow-up feature. They should use explicit opt-in reports and/or public, documented measurement datasets (such as OONI) with sample counts and freshness, rather than silently scraping arbitrary Google reviews or Telegram conversations.
+
 ## Endpoints
 
 - `GET /health` — health and version.

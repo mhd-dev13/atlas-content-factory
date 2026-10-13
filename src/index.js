@@ -1,6 +1,7 @@
 import { routeUpdate } from "./router.js";
 import { handleGameConnect } from "./game-connect.js";
 import { GAME_CONNECT_HTML } from "./game-connect-ui.js";
+import { handleNetworkStatus } from "./network-status.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -18,7 +19,12 @@ export default {
       });
     }
 
-    // Route only Game Connect endpoints and their preflight requests to the API.
+    // Keep network status as a separate adapter while sharing the same API host.
+    if (url.pathname === "/api/v1/network-status") {
+      return handleNetworkStatus(request, env);
+    }
+
+    // Route Game Connect endpoints and their preflight requests to the API.
     if (
       url.pathname === "/health" ||
       url.pathname.startsWith("/api/v1/")
