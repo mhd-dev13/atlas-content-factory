@@ -47,3 +47,17 @@ The API deliberately reports in-game latency, jitter, and packet loss as unavail
 - `npm run check` — existing Wrangler dry-run deployment validation.
 
 No deployment, production secret, or Wrangler binding changes are included.
+
+## Live website network dashboard
+
+The website at `GET /` now includes a live animated network-radar panel above the game diagnostic controls. It polls `GET /api/v1/network-status` every 60 seconds and displays:
+
+- the number of public monitoring sources that returned data;
+- interpreted operator counts and observed disruption signals where available;
+- per-source response/data-row indicators;
+- the latest evidence summary, recommendations, analysis provider, and fetch time;
+- an animated line chart of source availability across refreshes in the current browser session.
+
+The chart is intentionally based on actual API responses, not generated demo values. It starts with the first received sample and keeps up to 20 samples in browser memory. The API currently caches upstream collection for five minutes, so polling the page more often does not imply new upstream measurements every minute. A successful source response is not proof that a player's connection is healthy; the public sources do not measure that player's in-game ping, jitter, packet loss, or route.
+
+This is a website UI change on the experimental `feature/atlas-game-connect-mvp` branch. It does not deploy the Worker or change production traffic.
