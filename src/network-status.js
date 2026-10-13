@@ -186,20 +186,32 @@ async function readCached(env) {
   }
 }
 
+function findArrays(value, output = [], depth = 0) {
+  if (!value || typeof value !== "object" || depth > 7) return output;
+  if (Array.isArray(value)) {
+    output.push(value);
+    for (const item of value.slice(0, 30)) findArrays(item, output, depth + 1);
+    return output;
+  }
+  for (const child of Object.values(value)) findArrays(child, output, depth + 1);
+  return output;
+}
+
 function countPayloadRows(payload) {
   if (Array.isArray(payload)) return payload.length;
-  if (!payload || typeof payload !== "object") return 0;
-  for (const key of ["data", "items", "results", "records", "measurements", "signals", "services", "networks", "sources"]) {
-    if (Array.isArray(payload[key])) return payload[key].length;
-  }
-  return 0;
+  const arrays = findArrays(payload).filter((item) => item.length > 0);
+  return arrays.length ? Math.max(...arrays.map((item) => item.length)) : 0;
 }
 
 function extractObservedAt(payload, depth = 0) {
-  if (!payload || typeof payload !== "object" || depth > 5) return null;
-  for (const key of ["observed_at", "timestamp", "updated_at", "last_updated", "generated_at", "fetched_at", "updatedAt"]) {
+  if (!payload || typeof payload !== "object" || depth > 6) return null;
+  for (const key of ["observed_at", "timestamp", "updated_at", "last_updated", "generated_at", "fetched_at", "updatedAt", "checked_at", "measurement_start_time"]) {
     const value = payload[key];
     if (typeof value === "string" && Number.isFinite(Date.parse(value))) return value;
+    if (typeof value === "number" && value > 1_000_000_000) {
+      const date = new Date(value > 10_000_000_000 ? value : value * 1000);
+      if (Number.isFinite(date.getTime())) return date.toISOString();
+    }
   }
   for (const value of Object.values(payload)) {
     if (value && typeof value === "object") {
@@ -208,6 +220,46 @@ function extractObservedAt(payload, depth = 0) {
     }
   }
   return null;
+}
+
+function compactPayloadFacts(payload) {
+  const arrays = findArrays(payload).filter((item) => item.length > 0);
+  const rows = arrays.sort((a, b) => b.length - a.length)[0] || [];
+  const objects = [];
+  const visit = (value, depth = 0) => {
+    if (!value || typeof value !== "object" || depth > 7 || objects.length >= 80) return;
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, 30)) visit(item, depth + 1);
+      return;
+    }
+    objects.push(value);
+    for (const child of Object.values(value)) if (child && typeof child === "object") visit(child, depth + 1);
+  };
+  visit(payload);
+  const fieldNames = [...new Set(objects.flatMap((item) => Object.keys(item)))].slice(0, 40);
+  const interesting = [];
+  const seen = new Set();
+  const keyPattern = /status|state|health|availability|reachable|success|error|failure|blocked|censor|anomal|outage|incident|disrupt|latency|response.?time|rtt|ping|jitter|loss|packet|speed|download|upload|asn|prefix|route|withdraw|timestamp|updated|observed|service|domain|operator|isp|network|score|count|total|severity|signal|confidence|category|test|probe|measurement/i;
+  for (const object of objects) {
+    for (const [key, value] of Object.entries(object)) {
+      if (!keyPattern.test(key) || value === null || typeof value === "object") continue;
+      const rendered = String(value).trim();
+      if (!rendered || rendered.length > 140) continue;
+      const item = key + "=" + rendered;
+      if (!seen.has(item)) {
+        seen.add(item);
+        interesting.push(item);
+        if (interesting.length >= 35) break;
+      }
+    }
+    if (interesting.length >= 35) break;
+  }
+  return {
+    row_count: rows.length,
+    field_names: fieldNames,
+    key_facts: interesting,
+    observed_at: extractObservedAt(payload)
+  };
 }
 
 async function fetchSource(config, fetchImpl) {
@@ -221,19 +273,19 @@ async function fetchSource(config, fetchImpl) {
     const contentType = response.headers.get("content-type") || "";
     if (contentType && !contentType.toLowerCase().includes("json")) throw new Error("not_json");
     const payload = await response.json();
-    const rows = countPayloadRows(payload);
-    if (payload && typeof payload === "object" && (payload.error || payload.errors) && rows === 0) {
+    if (payload && typeof payload === "object" && (payload.error || payload.errors) && countPayloadRows(payload) === 0) {
       throw new Error("source_error_payload");
     }
+    const facts = compactPayloadFacts(payload);
     return {
       id: config.id,
       label_fa: config.label_fa,
       category: config.category,
       state: "available",
-      item_count: rows,
-      observed_at: extractObservedAt(payload),
+      item_count: facts.row_count,
+      observed_at: facts.observed_at,
       interpreted: false,
-      note_fa: "داده دریافت شد؛ تا زمان نگاشت اختصاصی ساختار این منبع، از آن نتیجهٔ سلامت یا اختلال ساخته نمی‌شود.",
+      facts,
       payload
     };
   } catch (error) {
@@ -246,8 +298,95 @@ async function fetchSource(config, fetchImpl) {
       item_count: 0,
       observed_at: null,
       interpreted: false,
-      note_fa: "این منبع در این نوبت دادهٔ قابل استفاده نداد."
+      facts: { row_count: 0, field_names: [], key_facts: [], observed_at: null },
+      error_code: String(error?.message || "source_failed").slice(0, 80)
     };
+  }
+}
+
+function buildEvidenceSummary(sources, operators) {
+  const findings = [];
+  const arvan = sources.find((source) => source.id === "arvancloud");
+  if (operators.length) {
+    const affected = operators.filter((operator) => operator.disrupted_services > 0);
+    if (affected.length) {
+      findings.push("رادار ابرآروان برای " + affected.length + " اپراتور نشانهٔ اختلال ثبت کرده؛ این داده، مسیر شخصی بازیکن را اندازه نمی‌گیرد.");
+    } else {
+      findings.push("رادار ابرآروان " + operators.length + " اپراتور قابل شناسایی دارد؛ وضعیت سلامت فقط با پوشش کافی مقصدها قابل ارزیابی است.");
+    }
+  } else if (arvan?.state === "available") {
+    findings.push("دادهٔ ابرآروان دریافت شد، اما رکورد قابل‌تفسیر برای اپراتور و مقصد از آن استخراج نشد.");
+  }
+  const access = sources.find((source) => source.id === "connectivity");
+  if (access?.state === "available") {
+    findings.push("پروب‌های دسترسی سرویس‌ها " + access.item_count + " ردیف داده برگرداندند؛ برای اعلام اختلال باید فیلدهای واقعی موفقیت/شکست و زمان سنجش تفسیر شوند.");
+  }
+  const outage = sources.find((source) => source.id === "ioda");
+  if (outage?.state === "available") {
+    findings.push("سیگنال‌های IODA دریافت شدند؛ صرف دریافت آن‌ها به معنی وجود یا نبود قطعی نیست.");
+  }
+  const ooni = sources.find((source) => source.id === "ooni");
+  if (ooni?.state === "available") {
+    findings.push("اندازه‌گیری‌های OONI دریافت شدند؛ نتیجه‌گیری دربارهٔ مسدودسازی باید به آزمون، دامنه، زمان و نمونه‌های داخل کشور وابسته باشد.");
+  }
+  if (!findings.length) findings.push("دادهٔ خام دریافت شد، اما هنوز هیچ سیگنال قابل اتکایی برای تشخیص قطعی یا پیشنهاد مسیر از آن استخراج نشده است.");
+  return findings.slice(0, 4);
+}
+
+function buildRuleBasedRecommendations(sources, operators) {
+  const recommendations = [];
+  const unavailable = sources.filter((source) => source.state !== "available");
+  if (unavailable.length) {
+    recommendations.push("نتیجه‌گیری را تا بازیابی منابع ناقص قطعی نکن؛ " + unavailable.map((source) => source.label_fa).slice(0, 2).join(" و ") + " فعلاً داده ندادند.");
+  }
+  const affected = operators.filter((operator) => operator.disrupted_services > 0);
+  if (affected.length) {
+    recommendations.push("اگر بازی مشکل دارد، همان مقصد را یک بار با اینترنت اپراتور دیگر مقایسه کن؛ این مقایسه کمک می‌کند مشکل عمومی یا وابسته به مسیر اپراتور را جدا کنیم.");
+  } else {
+    recommendations.push("برای پیشنهاد مسیر واقعی، از همان دستگاه یک آزمون بازی/سرور انجام بده و نتیجه را با یک اتصال مستقل (مثلاً اینترنت موبایل در برابر ثابت) مقایسه کن.");
+  }
+  recommendations.push("فعلاً DNS یا VPN را خودکار تغییر نده؛ قبل از توصیهٔ آن‌ها باید شواهد مشخصی از DNS، مسدودسازی یا تفاوت مسیر داشته باشیم.");
+  return recommendations.slice(0, 3);
+}
+
+async function summarizeWithWorkersAI(env, evidence) {
+  if (!env?.AI || typeof env.AI.run !== "function") return null;
+  const model = "@cf/qwen/qwen3-30b-a3b-fp8";
+  const prompt = [
+    "نقش: تحلیل‌گر شواهد شبکه برای سامانهٔ اطلس، پاسخ فقط فارسی و دقیق.",
+    "فقط از JSON شواهد داده‌شده استفاده کن. هرگز عدد، وضعیت، علت یا اندازه‌گیری نساز.",
+    "دریافت موفق HTTP/JSON مساوی سلامت شبکه نیست. دادهٔ قدیمی، خالی یا با schema ناشناخته را به عنوان سلامت تفسیر نکن.",
+    "منابع از نقاط دید متفاوت‌اند و هیچ‌کدام به‌تنهایی پینگ/جیتر/افت بستهٔ دستگاه بازیکن را اندازه نمی‌گیرند.",
+    "خروجی فقط JSON معتبر با کلیدهای summary (رشته کوتاه)، findings (آرایه حداکثر 3 رشته)، recommendations (آرایه حداکثر 3 رشته)، confidence (یکی از کم، متوسط، بالا) باشد.",
+    "پیشنهادها باید کم‌خطر و مبتنی بر شواهد باشند. اگر شواهد کافی نیست، دقیقاً بگو چه آزمونی لازم است؛ DNS/VPN را بدون شاهد تجویز نکن.",
+    "شواهد:",
+    JSON.stringify(evidence)
+  ].join("\n\n");
+  try {
+    const result = await env.AI.run(model, {
+      prompt,
+      max_tokens: 650,
+      temperature: 0.15,
+      top_p: 0.8,
+      enable_thinking: false
+    });
+    const text = String(result?.response || result?.result?.response || "").trim();
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}");
+    if (jsonStart < 0 || jsonEnd <= jsonStart) return null;
+    const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    if (typeof parsed.summary !== "string" || !parsed.summary.trim()) return null;
+    const validConfidence = ["کم", "متوسط", "بالا"].includes(parsed.confidence) ? parsed.confidence : "کم";
+    return {
+      summary: parsed.summary.trim().slice(0, 500),
+      findings: Array.isArray(parsed.findings) ? parsed.findings.filter((item) => typeof item === "string").slice(0, 3).map((item) => item.slice(0, 280)) : [],
+      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.filter((item) => typeof item === "string").slice(0, 3).map((item) => item.slice(0, 280)) : [],
+      confidence: validConfidence,
+      model
+    };
+  } catch (error) {
+    console.error("ATLAS_NETWORK_AI_SUMMARY_FAILED", error?.name || "Error");
+    return null;
   }
 }
 
@@ -265,27 +404,63 @@ export async function getNetworkStatus(env = {}, options = {}) {
   const arvanPayload = fetchedSources.find((source) => source.id === "arvancloud")?.payload;
   const interpreted = arvanPayload ? normalizeArvanRadar(arvanPayload) : null;
   const operators = interpreted?.operators || [];
-  const sources = fetchedSources.map(({ payload, ...source }) => source.id === "arvancloud" && (interpreted?.operator_count || 0) > 0
-    ? { ...source, interpreted: true, note_fa: "ساختار دادهٔ ابرآروان تفسیر شد؛ اعتبار نتیجه همچنان به تازگی و تعداد مقصدهای شناخته‌شده وابسته است." }
+  const sourceEvidence = fetchedSources.map(({ payload, ...source }) => source);
+  const sources = sourceEvidence.map((source) => source.id === "arvancloud" && (interpreted?.operator_count || 0) > 0
+    ? { ...source, interpreted: true, note_fa: "ساختار دادهٔ ابرآروان تفسیر شد؛ اعتبار نتیجه به تازگی و تعداد مقصدهای شناخته‌شده وابسته است." }
     : source);
-  const disruptedOperators = operators.filter((item) => item.disrupted_services > 0).length;
+  const findings = buildEvidenceSummary(sources, operators);
+  const recommendations = buildRuleBasedRecommendations(sources, operators);
+  const evidence = {
+    generated_at: new Date().toISOString(),
+    available_sources: sourceAvailableCount,
+    total_sources: SOURCE_CONFIG.length,
+    sources: sources.map((source) => ({
+      id: source.id,
+      name: source.label_fa,
+      category: source.category,
+      state: source.state,
+      row_count: source.item_count,
+      observed_at: source.observed_at,
+      fields: source.facts.field_names,
+      facts: source.facts.key_facts
+    })),
+    operators: operators.map((operator) => ({
+      name: operator.operator,
+      status: operator.status,
+      checked_services: operator.checked_services,
+      known_service_count: operator.known_service_count,
+      disrupted_services: operator.disrupted_services,
+      services: operator.services.slice(0, 8)
+    })),
+    findings,
+    recommendations,
+    limits: [
+      "این داده‌ها عمومی‌اند و از چند نقطهٔ پایش مستقل می‌آیند.",
+      "پینگ، جیتر و افت بستهٔ دستگاه بازیکن هنوز از خود دستگاه اندازه‌گیری نشده‌اند.",
+      "دریافت موفق یک منبع، سلامت شبکه را ثابت نمی‌کند."
+    ]
+  };
+  const aiSummary = await summarizeWithWorkersAI(env, evidence);
   const result = {
     provider: "iranblock_multi_source",
     observed_at: new Date().toISOString(),
     fetched_at: new Date().toISOString(),
     status: allSourcesFailed ? "unavailable" : "available",
-    overall_fa: allSourcesFailed
+    overall_fa: aiSummary?.summary || (allSourcesFailed
       ? "منابع پایش فعلاً دادهٔ قابل دریافت ندادند"
-      : interpreted?.status === "available" && operators.length > 0
-        ? interpreted.overall_fa
-        : "داده از چند منبع مستقل دریافت شد، اما هنوز به شواهد قابل‌تفسیر برای پیشنهاد مسیر اتصال بازی تبدیل نشده است",
+      : "داده‌ها جمع‌آوری و بررسی اولیه شدند؛ برای انتخاب مسیر واقعی بازی، هنوز اندازه‌گیری از اتصال خود بازیکن لازم است."),
+    analysis_provider: aiSummary ? "cloudflare_workers_ai" : "rule_based_fallback",
+    analysis_model: aiSummary?.model || null,
+    confidence: aiSummary?.confidence || "کم",
+    findings_fa: aiSummary?.findings?.length ? aiSummary.findings : findings,
+    recommendations_fa: aiSummary?.recommendations?.length ? aiSummary.recommendations : recommendations,
     operator_count: operators.length,
-    disrupted_operator_count: disruptedOperators,
+    disrupted_operator_count: operators.filter((item) => item.disrupted_services > 0).length,
     operators,
     source_count: SOURCE_CONFIG.length,
     source_available_count: sourceAvailableCount,
     sources,
-    limitations_fa: "این‌ها داده‌های عمومی از چند نقطهٔ پایش مستقل‌اند، نه از سیم‌کارت، مودم یا مسیر واقعی بازی شما. دریافت موفق یک منبع به معنی سالم بودن اینترنت نیست؛ پینگ، جیتر و افت بستهٔ بازی تا وقتی از اتصال بازیکن اندازه‌گیری نشوند، گزارش نمی‌شوند."
+    limitations_fa: "این‌ها داده‌های عمومی از چند نقطهٔ پایش مستقل‌اند، نه از سیم‌کارت، مودم یا مسیر واقعی بازی شما. پینگ، جیتر و افت بستهٔ بازی تا وقتی از اتصال بازیکن اندازه‌گیری نشوند، گزارش نمی‌شوند."
   };
 
   if (allSourcesFailed && cached?.status === "available") {
@@ -321,31 +496,26 @@ export function formatNetworkStatusFa(data) {
     "🌐 وضعیت اینترنت",
     "",
     data.overall_fa,
-    ""
+    "",
+    "🔎 جمع‌بندی شواهد"
   ];
-  for (const operator of (data.operators || []).slice(0, 10)) {
-    const icon = operator.disrupted_services > 0 ? "🟠 " : operator.status === "دادهٔ محدود" ? "⚪️ " : "🟢 ";
-    lines.push(
-      icon + operator.operator + ": " + operator.status +
-      " (" + operator.disrupted_services + "/" + operator.checked_services + " مقصد دارای نشانهٔ اختلال)"
-    );
-    const disrupted = operator.services.filter((service) => service.status !== "عادی");
-    if (disrupted.length) {
-      lines.push("   موارد: " + disrupted.map((service) => service.name + " — " + service.status).join("، "));
-    }
-  }
-  if (data.sources?.length) {
-    lines.push("");
-    lines.push("پاسخ منابع پایش: " + data.source_available_count + "/" + data.source_count);
-    for (const source of data.sources) {
-      lines.push((source.state === "available" ? "📡 " : "⚪️ ") + source.label_fa + ": " +
-        (source.state === "available" ? "داده دریافت شد؛ تفسیر اختصاصی در حال تکمیل" : "داده در دسترس نیست"));
-    }
+  for (const finding of (data.findings_fa || []).slice(0, 3)) lines.push("• " + finding);
+  lines.push("", "🧭 پیشنهادهای بعدی");
+  for (const recommendation of (data.recommendations_fa || []).slice(0, 3)) lines.push("• " + recommendation);
+  lines.push("", "📡 منابع (" + data.source_available_count + "/" + data.source_count + ")");
+  for (const source of data.sources || []) {
+    const icon = source.state === "available" ? "🟢" : "⚪️";
+    const detail = source.state === "available"
+      ? (source.item_count ? source.item_count + " ردیف" : "پاسخ دریافت شد؛ دادهٔ ردیفی شناسایی نشد") +
+        (source.observed_at ? "؛ زمان داده: " + source.observed_at : "")
+      : "داده در دسترس نیست";
+    lines.push(icon + " " + source.label_fa + ": " + detail);
   }
   lines.push("");
+  lines.push("اطمینان تحلیل: " + (data.confidence || "کم") + "؛ موتور تحلیل: " + (data.analysis_provider === "cloudflare_workers_ai" ? "مدل رایگان Cloudflare Workers AI" : "قواعد محلی"));
   if (data.stale) lines.push(data.warning_fa);
   lines.push(data.limitations_fa);
-  if (data.fetched_at) lines.push("آخرین به‌روزرسانی: " + data.fetched_at);
+  if (data.fetched_at) lines.push("آخرین دریافت: " + data.fetched_at);
   return lines.join("\n");
 }
 
