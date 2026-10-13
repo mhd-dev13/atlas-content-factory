@@ -297,7 +297,7 @@ export async function getNetworkStatus(env = {}, options = {}) {
 }
 
 export function formatNetworkStatusFa(data) {
-  if (!data || data.status !== "available" || !data.operators?.length) {
+  if (!data || data.status !== "available") {
     return [
       "🌐 وضعیت اینترنت",
       "",
