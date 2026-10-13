@@ -8,7 +8,7 @@ const SOURCE_CONFIG = [
   { id: "routing", label_fa: "مسیریابی اینترنت (RIPE)", category: "routing", url: "https://iranblock.com/api/v1/routing/metrics" },
   { id: "source_freshness", label_fa: "تازگی منابع", category: "metadata", url: "https://iranblock.com/api/v1/status/sources" }
 ];
-const CACHE_KEY = "atlas:network-status:arvancloud:v1";
+const CACHE_KEY = "atlas:network-status:multi-source:v2";
 const CACHE_TTL_SECONDS = 300;
 
 const OPERATOR_ALIASES = [
@@ -278,13 +278,6 @@ export async function getNetworkStatus(env = {}, options = {}) {
     limitations_fa: "این‌ها داده‌های عمومی از چند نقطهٔ پایش مستقل‌اند، نه از سیم‌کارت، مودم یا مسیر واقعی بازی شما. دریافت موفق یک منبع به معنی سالم بودن اینترنت نیست؛ پینگ، جیتر و افت بستهٔ بازی تا وقتی از اتصال بازیکن اندازه‌گیری نشوند، گزارش نمی‌شوند."
   };
 
-  if (env.ATLAS_KV && typeof env.ATLAS_KV.put === "function") {
-    try {
-      await env.ATLAS_KV.put(CACHE_KEY, JSON.stringify(result), { expirationTtl: 3600 });
-    } catch (error) {
-      console.error("ATLAS_NETWORK_STATUS_CACHE_WRITE_FAILED", error?.name || "Error");
-    }
-  }
   if (allSourcesFailed && cached?.status === "available") {
     return {
       ...cached,
@@ -292,6 +285,13 @@ export async function getNetworkStatus(env = {}, options = {}) {
       stale: true,
       warning_fa: "دریافت تازه از هیچ منبعی موفق نشد؛ آخرین دادهٔ ذخیره‌شده نمایش داده می‌شود."
     };
+  }
+  if (env.ATLAS_KV && typeof env.ATLAS_KV.put === "function") {
+    try {
+      await env.ATLAS_KV.put(CACHE_KEY, JSON.stringify(result), { expirationTtl: 3600 });
+    } catch (error) {
+      console.error("ATLAS_NETWORK_STATUS_CACHE_WRITE_FAILED", error?.name || "Error");
+    }
   }
   return { ...result, cache: "miss" };
 }
