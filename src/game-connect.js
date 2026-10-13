@@ -105,9 +105,11 @@ export async function handleGameConnect(request, env = {}, options = {}) {
 
   let body;
   try {
-    const contentLength = Number(request.headers.get("content-length") || 0);
-    if (contentLength > 2048) return json({ error: "payload_too_large", message_fa: "حجم درخواست بیش از حد مجاز است." }, 413);
-    body = await request.json();
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 2048) {
+      return json({ error: "payload_too_large", message_fa: "حجم درخواست بیش از حد مجاز است." }, 413);
+    }
+    body = JSON.parse(rawBody);
   } catch {
     return json({ error: "invalid_json", message_fa: "بدنه درخواست باید JSON معتبر باشد." }, 400);
   }
