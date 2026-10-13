@@ -14,8 +14,8 @@ Diagnostic sessions are stored in the existing `ATLAS_KV` binding for 30 minutes
 
 - Diagnostic request bodies are capped at 2,048 bytes. The handler reads the stream incrementally and cancels it as soon as the limit is crossed; `Content-Length` is only an early-rejection hint, not the enforcement mechanism.
 - `DIAGNOSTIC_LIMITER` is a Cloudflare Workers Rate Limiting binding configured in `wrangler.jsonc`: 10 requests per 60 seconds per client IP, with separate buckets for creation and retrieval. If the binding is missing or errors, diagnostic requests fail closed with `503`; over-limit requests receive `429` and `Retry-After: 60`.
-- The Worker binding is location-local / approximate, not a globally exact quota. For a public production launch, add a Cloudflare WAF rate-limiting rule at the zone/hostname edge as a second layer, and tune thresholds against real traffic. Do not trust client-supplied forwarding headers; the Worker uses Cloudflare's `CF-Connecting-IP` header.
-- If managing bindings in the Cloudflare dashboard instead of deploying the checked-in Wrangler config, add a Workers Rate Limiting binding named `DIAGNOSTIC_LIMITER`, with limit `10`, period `60` seconds, and a namespace ID unique in the account. The checked-in `wrangler.jsonc` already declares this binding for Wrangler-based deployments.
+- The Worker binding is location-local / approximate, not a globally exact quota. It keys anonymous traffic by client IP, which can group multiple users behind a mobile-carrier NAT or shared VPN; tune thresholds if legitimate users are affected. Do not trust client-supplied forwarding headers; the Worker uses Cloudflare's `CF-Connecting-IP` header.
+- Before deploying, verify that namespace ID `20261013` is unique within the target Cloudflare account; change it in `wrangler.jsonc` if it is already used. Deploy the binding through Wrangler. Cloudflare's Workers Rate Limiting binding is not currently managed from the dashboard; for a second layer, configure a Cloudflare WAF rate-limiting rule for the public hostname in the dashboard.
 
 ## Important measurement limits
 
