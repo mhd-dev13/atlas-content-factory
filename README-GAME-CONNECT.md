@@ -2,10 +2,16 @@
 
 A Persian-language diagnostic API isolated behind `/health` and `/api/v1/*`. The existing Telegram/content handler remains available for requests outside these routes.
 
+## Shared bot + website integration
+
+The Telegram bot and Persian website use the same game catalog (`getGameCatalog`) and diagnostic function (`createGameDiagnostic`) in `src/game-connect.js`. The bot menu adds **🎮 بررسی اتصال بازی**, and `/connect` or `/games` opens the same supported-service list. Both surfaces return the same source-aware result schema and save diagnostic records to the same `ATLAS_KV` namespace. Existing content-generation commands remain intact.
+
+Each catalog entry exposes an official source URL, a Persian source label, and an explicit measurement-scope note. Steam's probe is documented by Valve's Steamworks Web API docs; Epic Games and Riot Games checks target their official public sites. These checks only measure the Worker-to-endpoint HTTP response, not in-game connectivity or the user's ISP route.
+
 ## Endpoints
 
 - `GET /health` — health and version.
-- `GET /api/v1/games` — supported service catalog; probe URLs are not returned.
+- `GET /api/v1/games` — supported service catalog with official source URLs and measurement scope; internal probe URLs are not returned.
 - `POST /api/v1/diagnostics` — accepts `{"game":"steam"}`, `{"game":"epic-games"}`, or `{"game":"riot-games"}`.
 
 Diagnostic sessions are stored in the existing `ATLAS_KV` binding for 30 minutes. Creation fails with `503 storage_unavailable` if the binding is missing or the write fails; the API never returns `201` for a result it could not persist.

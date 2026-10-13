@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateQuality, classifyAccess, handleGameConnect } from "../src/game-connect.js";
+import { calculateQuality, classifyAccess, createGameDiagnostic, getGameCatalog, handleGameConnect } from "../src/game-connect.js";
 
 function request(path, method = "GET", body) {
   return new Request("https://atlas.example" + path, {
@@ -32,6 +32,22 @@ test("game catalog does not expose arbitrary probe URLs", async () => {
   assert.equal(response.status, 200);
   assert.ok(data.games.some((game) => game.id === "steam"));
   assert.equal("endpoint" in data.games[0], false);
+  assert.ok(data.games.every((game) => game.source_url.startsWith("https://")));
+  assert.ok(data.games.every((game) => game.measurement_scope_fa.includes("سرور اطلس")));
+});
+
+test("shared diagnostic helper returns a source-aware result for bot and website", async () => {
+  const diagnostic = await createGameDiagnostic("steam", {
+    ATLAS_KV: memoryKV()
+  }, {
+    fetchImpl: async () => new Response('{"response":{}}', { status: 200 })
+  });
+  assert.equal(diagnostic.status, 201);
+  assert.equal(diagnostic.body.game.id, "steam");
+  assert.ok(diagnostic.body.source.url.startsWith("https://"));
+  assert.equal(diagnostic.body.access.source_url, diagnostic.body.source.url);
+  assert.equal(diagnostic.body.quality.state, "not_measured");
+  assert.ok(getGameCatalog().some((game) => game.id === "steam" && game.source_url));
 });
 
 test("malformed JSON is rejected", async () => {

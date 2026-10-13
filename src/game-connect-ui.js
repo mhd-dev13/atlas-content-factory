@@ -31,7 +31,7 @@ export const GAME_CONNECT_HTML = String.raw`<!doctype html>
 </div>
 <button class="primary" id="start" type="button">شروع بررسی ←</button><p class="hint">معمولاً چند ثانیه طول می‌کشد. نتیجه فقط از سمت سرور اطلس است.</p>
 <div class="error" id="error" role="alert"></div>
-<section class="result" id="result" aria-live="polite"><div class="status"><span class="dot"></span><span id="result-title">نتیجه بررسی</span></div><div class="metrics"><div class="metric"><span>وضعیت وب‌سایت</span><strong id="access">—</strong></div><div class="metric"><span>پاسخ HTTP</span><strong id="http">—</strong></div><div class="metric"><span>زمان پاسخ سرور اطلس</span><strong id="duration">—</strong></div><div class="metric"><span>پینگ بازی</span><strong>اندازه‌گیری نشده</strong></div></div><p class="explain" id="explain"></p></section>
+<section class="result" id="result" aria-live="polite"><div class="status"><span class="dot"></span><span id="result-title">نتیجه بررسی</span></div><div class="metrics"><div class="metric"><span>وضعیت وب‌سایت</span><strong id="access">—</strong></div><div class="metric"><span>پاسخ HTTP</span><strong id="http">—</strong></div><div class="metric"><span>زمان پاسخ سرور اطلس</span><strong id="duration">—</strong></div><div class="metric"><span>پینگ بازی</span><strong>اندازه‌گیری نشده</strong></div></div><p class="explain" id="explain"></p><p class="hint">منبع رسمی: <a id="source-link" href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer" style="color:var(--mint)">مشاهده منبع</a></p></section>
 </section>
 <aside class="card sidecard"><div class="sidehead"><span class="shield">🛡️</span><h2>نتیجه را درست بخوان</h2></div><p>این نسخه یک بررسی محدود انجام می‌دهد؛ هنوز ابزار تست کامل اتصال بازی نیست.</p><ul><li>«پاسخ موفق» یعنی مقصد پاسخ موفق داده است. خطاهایی مثل 403 جداگانه نمایش داده می‌شوند و علت آن‌ها لزوماً فیلترینگ نیست.</li><li>«نامشخص» یعنی بررسی نتوانسته نتیجه قطعی بدهد.</li><li>پینگ داخل بازی، جیتر و افت بسته فعلاً اندازه‌گیری نمی‌شوند.</li></ul><div class="notice">این نتیجه فیلترینگ در ایران یا اتصال از دستگاه تو را اثبات نمی‌کند. برای چنین نتیجه‌ای باید اندازه‌گیری واقعی از مسیر کاربر انجام شود.</div></aside>
 </div>
@@ -54,6 +54,9 @@ start.addEventListener("click",async()=>{
     document.getElementById("http").textContent=data.access?.http_status??"بدون پاسخ HTTP";
     document.getElementById("duration").textContent=Number.isFinite(data.access?.duration_ms)?data.access.duration_ms+" میلی‌ثانیه":"—";
     document.getElementById("explain").textContent=(data.access?.note_fa||"")+" "+(data.conclusion_fa||"")+" "+(data.quality?.note_fa||"");
+    const sourceLink=document.getElementById("source-link");
+    sourceLink.href=data.source?.url||data.access?.source_url||"https://store.steampowered.com/";
+    sourceLink.textContent=data.source?.label_fa||data.access?.source_label_fa||"مشاهده منبع رسمی";
     resultBox.classList.add("show");
   }catch(error){errorBox.textContent=error.message||"خطایی رخ داد. دوباره تلاش کن.";errorBox.classList.add("show");}
   finally{start.disabled=false;start.textContent="شروع بررسی ←";}

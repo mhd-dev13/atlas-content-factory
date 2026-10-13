@@ -1,8 +1,38 @@
 const GAMES = Object.freeze([
-  { id: "steam", nameFa: "استیم", platform: ["pc"], endpoint: "https://api.steampowered.com/ISteamWebAPIUtil/GetServerInfo/v1/", endpointLabelFa: "رابط رسمی اطلاعات سرور استیم" },
-  { id: "epic-games", nameFa: "اپیک گیمز", platform: ["pc"], endpoint: "https://store.epicgames.com/", endpointLabelFa: "وب‌سایت فروشگاه اپیک گیمز" },
-  { id: "riot-games", nameFa: "ریوت گیمز", platform: ["pc"], endpoint: "https://www.riotgames.com/", endpointLabelFa: "وب‌سایت رسمی ریوت گیمز" }
+  {
+    id: "steam", nameFa: "استیم", platform: ["pc"],
+    endpoint: "https://api.steampowered.com/ISteamWebAPIUtil/GetServerInfo/v1/",
+    endpointLabelFa: "رابط رسمی اطلاعات سرور استیم",
+    sourceUrl: "https://partner.steamgames.com/doc/webapi/ISteamWebAPIUtil#GetServerInfo",
+    sourceLabelFa: "مستندات رسمی Steam Web API"
+  },
+  {
+    id: "epic-games", nameFa: "اپیک گیمز", platform: ["pc"],
+    endpoint: "https://store.epicgames.com/",
+    endpointLabelFa: "وب‌سایت فروشگاه اپیک گیمز",
+    sourceUrl: "https://store.epicgames.com/",
+    sourceLabelFa: "فروشگاه رسمی Epic Games"
+  },
+  {
+    id: "riot-games", nameFa: "ریوت گیمز", platform: ["pc"],
+    endpoint: "https://www.riotgames.com/",
+    endpointLabelFa: "وب‌سایت رسمی ریوت گیمز",
+    sourceUrl: "https://www.riotgames.com/",
+    sourceLabelFa: "وب‌سایت رسمی Riot Games"
+  }
 ]);
+
+export function getGameCatalog() {
+  return GAMES.map(({ id, nameFa, platform, endpointLabelFa, sourceUrl, sourceLabelFa }) => ({
+    id,
+    name_fa: nameFa,
+    platforms: platform,
+    endpoint_label_fa: endpointLabelFa,
+    source_url: sourceUrl,
+    source_label_fa: sourceLabelFa,
+    measurement_scope_fa: "بررسی HTTP از سمت سرور اطلس؛ نه پینگ یا کیفیت اتصال دستگاه کاربر"
+  }));
+}
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -147,6 +177,51 @@ async function checkEndpoint(game, fetchImpl = fetch) {
   }
 }
 
+export async function createGameDiagnostic(gameId, env = {}, options = {}) {
+  const game = GAMES.find((item) => item.id === gameId);
+  if (!game) {
+    return { status: 422, body: { error: "unsupported_game", message_fa: "این بازی هنوز در فهرست پشتیبانی نیست." } };
+  }
+  if (!env.ATLAS_KV || typeof env.ATLAS_KV.put !== "function") {
+    return { status: 503, body: { error: "storage_unavailable", message_fa: "ذخیره نتیجه در حال حاضر در دسترس نیست؛ بررسی انجام نشد." } };
+  }
+
+  const check = await checkEndpoint(game, options.fetchImpl || fetch);
+  const id = crypto.randomUUID();
+  const result = {
+    id,
+    created_at: new Date().toISOString(),
+    game: { id: game.id, name_fa: game.nameFa },
+    source: { url: game.sourceUrl, label_fa: game.sourceLabelFa },
+    access: {
+      state: check.state,
+      tested_endpoint_fa: game.endpointLabelFa,
+      source_url: game.sourceUrl,
+      source_label_fa: game.sourceLabelFa,
+      observer: check.observer,
+      http_status: check.http_status,
+      duration_ms: check.duration_ms,
+      note_fa: check.note_fa
+    },
+    quality: {
+      state: "not_measured",
+      latency_ms: null,
+      jitter_ms: null,
+      packet_loss_pct: null,
+      note_fa: "پینگ داخل بازی، جیتر و افت بسته از این بررسی HTTP قابل اندازه‌گیری نیست."
+    },
+    conclusion_fa: "این نسخه فقط دسترسی مقصد رسمی را از سرور اطلس بررسی می‌کند؛ نتیجه، تشخیص قطعی اتصال بازی از دستگاه شما نیست."
+  };
+
+  try {
+    await env.ATLAS_KV.put("atlas:game-connect:diagnostic:" + id, JSON.stringify(result), { expirationTtl: 1800 });
+  } catch (error) {
+    console.error("ATLAS_GAME_CONNECT_KV_WRITE_FAILED", error?.name || "Error");
+    return { status: 503, body: { error: "storage_unavailable", message_fa: "ذخیره نتیجه ناموفق بود؛ نتیجه‌ای برای بازیابی ثبت نشد." } };
+  }
+  return { status: 201, body: result };
+}
+
 export async function handleGameConnect(request, env = {}, options = {}) {
   const url = new URL(request.url);
   const method = request.method.toUpperCase();
@@ -156,9 +231,7 @@ export async function handleGameConnect(request, env = {}, options = {}) {
     return json({ status: "ok", service: "atlas-game-connect", version: "0.1.0" });
   }
   if (url.pathname === "/api/v1/games" && method === "GET") {
-    return json({ games: GAMES.map(({ id, nameFa, platform, endpointLabelFa }) => ({
-      id, name_fa: nameFa, platforms: platform, endpoint_label_fa: endpointLabelFa
-    })) });
+    return json({ games: getGameCatalog() });
   }
   const diagnosticMatch = url.pathname.match(/^\/api\/v1\/diagnostics\/([0-9a-f-]{36})$/i);
   if (diagnosticMatch && method === "GET") {
@@ -201,48 +274,6 @@ export async function handleGameConnect(request, env = {}, options = {}) {
   if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.game !== "string" || body.game.length > 80) {
     return json({ error: "invalid_request", message_fa: "شناسه بازی معتبر نیست." }, 400);
   }
-  const game = GAMES.find((item) => item.id === body.game);
-  if (!game) return json({ error: "unsupported_game", message_fa: "این بازی هنوز در فهرست پشتیبانی نیست." }, 422);
-
-  if (!env.ATLAS_KV || typeof env.ATLAS_KV.put !== "function") {
-    return json({
-      error: "storage_unavailable",
-      message_fa: "ذخیره نتیجه در حال حاضر در دسترس نیست؛ بررسی انجام نشد."
-    }, 503);
-  }
-
-  const check = await checkEndpoint(game, options.fetchImpl || fetch);
-  const id = crypto.randomUUID();
-  const result = {
-    id,
-    created_at: new Date().toISOString(),
-    game: { id: game.id, name_fa: game.nameFa },
-    access: {
-      state: check.state,
-      tested_endpoint_fa: game.endpointLabelFa,
-      observer: check.observer,
-      http_status: check.http_status,
-      duration_ms: check.duration_ms,
-      note_fa: check.note_fa
-    },
-    quality: {
-      state: "not_measured",
-      latency_ms: null,
-      jitter_ms: null,
-      packet_loss_pct: null,
-      note_fa: "پینگ داخل بازی، جیتر و افت بسته از این بررسی HTTP قابل اندازه‌گیری نیست."
-    },
-    conclusion_fa: "این نسخه فقط دسترسی وب‌سایت رسمی را از سرور اطلس بررسی می‌کند؛ نتیجه، تشخیص قطعی اتصال بازی از دستگاه شما نیست."
-  };
-
-  try {
-    await env.ATLAS_KV.put("atlas:game-connect:diagnostic:" + id, JSON.stringify(result), { expirationTtl: 1800 });
-  } catch (error) {
-    console.error("ATLAS_GAME_CONNECT_KV_WRITE_FAILED", error?.name || "Error");
-    return json({
-      error: "storage_unavailable",
-      message_fa: "ذخیره نتیجه ناموفق بود؛ نتیجه‌ای برای بازیابی ثبت نشد."
-    }, 503);
-  }
-  return json(result, 201);
+  const diagnostic = await createGameDiagnostic(body.game, env, options);
+  return json(diagnostic.body, diagnostic.status);
 }
