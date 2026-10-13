@@ -122,16 +122,17 @@ test("limited single-destination samples are not presented as healthy", () => {
 });
 
 
-test("successful upstream JSON is not treated as proof of healthy connectivity", async () => {
+test("successful upstream JSON with sparse operator samples is not proof of healthy connectivity", async () => {
+  const sparse = { data: [{ operator: "Asiatech", score: 0 }] };
   const result = await getNetworkStatus({}, {
-    fetchImpl: async () => new Response(JSON.stringify(fixture), {
+    fetchImpl: async () => new Response(JSON.stringify(sparse), {
       status: 200,
       headers: { "content-type": "application/json" }
     })
   });
   assert.equal(result.status, "available");
-  assert.equal(result.operator_count, 0);
-  assert.match(result.overall_fa, /هنوز به شواهد قابل‌تفسیر/);
+  assert.equal(result.operator_count, 1);
+  assert.match(result.overall_fa, /برای تأیید سلامت اینترنت کافی نیستند/);
   assert.ok(result.sources.every((source) => source.interpreted === false));
   assert.match(formatNetworkStatusFa(result), /منابع مستقل: 8\/8 منبع پاسخ داد/);
 });
