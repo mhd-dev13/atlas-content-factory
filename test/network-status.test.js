@@ -135,7 +135,7 @@ test("successful upstream JSON with sparse operator samples is not proof of heal
   assert.match(result.overall_fa, /برای تأیید سلامت اینترنت کافی نیستند/);
   assert.equal(result.sources.find((source) => source.id === "arvancloud")?.interpreted, true);
   assert.ok(result.sources.filter((source) => source.id !== "arvancloud").every((source) => source.interpreted === false));
-  assert.match(formatNetworkStatusFa(result), /پاسخ منابع پایش: 8/);
+  assert.match(formatNetworkStatusFa(result), /منابع \(8\/8\)/);
 });
 
 test("network evidence is summarized by the configured Workers AI model when available", async () => {
