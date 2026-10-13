@@ -233,7 +233,8 @@ async function fetchSource(config, fetchImpl) {
       item_count: rows,
       observed_at: extractObservedAt(payload),
       interpreted: false,
-      note_fa: "داده دریافت شد؛ تا زمان نگاشت اختصاصی ساختار این منبع، از آن نتیجهٔ سلامت یا اختلال ساخته نمی‌شود."
+      note_fa: "داده دریافت شد؛ تا زمان نگاشت اختصاصی ساختار این منبع، از آن نتیجهٔ سلامت یا اختلال ساخته نمی‌شود.",
+      payload
     };
   } catch (error) {
     console.error("ATLAS_NETWORK_STATUS_SOURCE_FAILED", config.id, error?.name || "Error");
@@ -258,9 +259,14 @@ export async function getNetworkStatus(env = {}, options = {}) {
   }
 
   const fetchImpl = options.fetchImpl || fetch;
-  const sources = await Promise.all(SOURCE_CONFIG.map((config) => fetchSource(config, fetchImpl)));
-  const sourceAvailableCount = sources.filter((source) => source.state === "available").length;
+  const fetchedSources = await Promise.all(SOURCE_CONFIG.map((config) => fetchSource(config, fetchImpl)));
+  const sourceAvailableCount = fetchedSources.filter((source) => source.state === "available").length;
   const allSourcesFailed = sourceAvailableCount === 0;
+  const arvanPayload = fetchedSources.find((source) => source.id === "arvancloud")?.payload;
+  const interpreted = arvanPayload ? normalizeArvanRadar(arvanPayload) : null;
+  const operators = interpreted?.operators || [];
+  const sources = fetchedSources.map(({ payload, ...source }) => source);
+  const disruptedOperators = operators.filter((item) => item.disrupted_services > 0).length;
   const result = {
     provider: "iranblock_multi_source",
     observed_at: new Date().toISOString(),
@@ -268,10 +274,12 @@ export async function getNetworkStatus(env = {}, options = {}) {
     status: allSourcesFailed ? "unavailable" : "available",
     overall_fa: allSourcesFailed
       ? "منابع پایش فعلاً دادهٔ قابل دریافت ندادند"
-      : "داده از چند منبع مستقل دریافت شد، اما هنوز به شواهد قابل‌تفسیر برای پیشنهاد مسیر اتصال بازی تبدیل نشده است",
-    operator_count: 0,
-    disrupted_operator_count: 0,
-    operators: [],
+      : interpreted?.status === "available" && operators.length > 0
+        ? interpreted.overall_fa
+        : "داده از چند منبع مستقل دریافت شد، اما هنوز به شواهد قابل‌تفسیر برای پیشنهاد مسیر اتصال بازی تبدیل نشده است",
+    operator_count: operators.length,
+    disrupted_operator_count: disruptedOperators,
+    operators,
     source_count: SOURCE_CONFIG.length,
     source_available_count: sourceAvailableCount,
     sources,
