@@ -10,6 +10,16 @@ function request(path, method = "GET", body) {
   });
 }
 
+const allowRateLimit = { async limit() { return { success: true }; } };
+
+function memoryKV() {
+  const values = new Map();
+  return {
+    async put(key, value) { values.set(key, JSON.parse(value)); },
+    async get(key) { return values.get(key) ?? null; }
+  };
+}
+
 test("health endpoint reports the service version", async () => {
   const response = await handleGameConnect(request("/health"));
   assert.equal(response.status, 200);
@@ -37,8 +47,44 @@ test("oversized diagnostic payload is rejected", async () => {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ game: "steam", extra: "x".repeat(3000) })
-  }));
+  }), { DIAGNOSTIC_LIMITER: allowRateLimit });
   assert.equal(response.status, 413);
+});
+
+test("oversized streamed body is cancelled as soon as the limit is crossed", async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    pull(controller) { controller.enqueue(new Uint8Array(2049)); },
+    cancel() { cancelled = true; }
+  });
+  const response = await handleGameConnect(new Request("https://atlas.example/api/v1/diagnostics", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+    duplex: "half"
+  }), { DIAGNOSTIC_LIMITER: allowRateLimit });
+  assert.equal(response.status, 413);
+  assert.equal(cancelled, true);
+});
+
+test("diagnostic creation fails closed when rate limiting is not configured", async () => {
+  let called = false;
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {}, {
+    fetchImpl: async () => { called = true; return new Response("ok"); }
+  });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "rate_limit_unavailable");
+  assert.equal(called, false);
+});
+
+test("rate-limited diagnostic creation does not run the outbound probe", async () => {
+  let called = false;
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {
+    DIAGNOSTIC_LIMITER: { async limit() { return { success: false }; } }
+  }, { fetchImpl: async () => { called = true; return new Response("ok"); } });
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("retry-after"), "60");
+  assert.equal(called, false);
 });
 
 test("unsupported game is rejected without a network request", async () => {
@@ -51,7 +97,10 @@ test("unsupported game is rejected without a network request", async () => {
 });
 
 test("diagnostic separates access from unmeasured game quality", async () => {
-  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {}, {
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {
+    DIAGNOSTIC_LIMITER: allowRateLimit,
+    ATLAS_KV: memoryKV()
+  }, {
     fetchImpl: async () => new Response("ok", { status: 200 })
   });
   const result = await response.json();
@@ -64,7 +113,10 @@ test("diagnostic separates access from unmeasured game quality", async () => {
 });
 
 test("timeouts are inconclusive, not confirmed blocking", async () => {
-  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {}, {
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {
+    DIAGNOSTIC_LIMITER: allowRateLimit,
+    ATLAS_KV: memoryKV()
+  }, {
     fetchImpl: async () => { const error = new Error("timeout"); error.name = "TimeoutError"; throw error; }
   });
   const result = await response.json();
@@ -73,7 +125,10 @@ test("timeouts are inconclusive, not confirmed blocking", async () => {
 });
 
 test("an HTTP error response still proves the endpoint responded", async () => {
-  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "epic-games" }), {}, {
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "epic-games" }), {
+    DIAGNOSTIC_LIMITER: allowRateLimit,
+    ATLAS_KV: memoryKV()
+  }, {
     fetchImpl: async () => new Response("denied", { status: 403 })
   });
   const result = await response.json();
@@ -100,22 +155,47 @@ test("access classifier distinguishes timeout from definite failure", () => {
 });
 
 test("stored diagnostic can be retrieved by ID", async () => {
-  const values = new Map();
-  const kv = {
-    async put(key, value) { values.set(key, JSON.parse(value)); },
-    async get(key) { return values.get(key) ?? null; }
-  };
-  const created = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), { ATLAS_KV: kv }, {
+  const kv = memoryKV();
+  const created = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {
+    ATLAS_KV: kv,
+    DIAGNOSTIC_LIMITER: allowRateLimit
+  }, {
     fetchImpl: async () => new Response("ok", { status: 200 })
   });
   const diagnostic = await created.json();
-  const fetched = await handleGameConnect(request("/api/v1/diagnostics/" + diagnostic.id), { ATLAS_KV: kv });
+  const fetched = await handleGameConnect(request("/api/v1/diagnostics/" + diagnostic.id), {
+    ATLAS_KV: kv,
+    DIAGNOSTIC_LIMITER: allowRateLimit
+  });
   assert.equal(fetched.status, 200);
   assert.equal((await fetched.json()).id, diagnostic.id);
 });
 
+
+test("diagnostic creation fails explicitly when storage is missing", async () => {
+  let called = false;
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {
+    DIAGNOSTIC_LIMITER: allowRateLimit
+  }, { fetchImpl: async () => { called = true; return new Response("ok"); } });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "storage_unavailable");
+  assert.equal(called, false);
+});
+
+test("diagnostic creation reports KV write failure instead of returning an unsaved result", async () => {
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {
+    DIAGNOSTIC_LIMITER: allowRateLimit,
+    ATLAS_KV: { async put() { throw new Error("KV unavailable"); } }
+  }, { fetchImpl: async () => new Response("ok", { status: 200 }) });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "storage_unavailable");
+});
+
 test("diagnostic retrieval reports unavailable storage explicitly", async () => {
-  const response = await handleGameConnect(request("/api/v1/diagnostics/12345678-1234-1234-1234-123456789abc"));
+  const response = await handleGameConnect(
+    request("/api/v1/diagnostics/12345678-1234-1234-1234-123456789abc"),
+    { DIAGNOSTIC_LIMITER: allowRateLimit }
+  );
   assert.equal(response.status, 503);
 });
 
