@@ -90,6 +90,26 @@ test("access classifier distinguishes timeout from definite failure", () => {
   assert.equal(classifyAccess({}), "inconclusive");
 });
 
+test("stored diagnostic can be retrieved by ID", async () => {
+  const values = new Map();
+  const kv = {
+    async put(key, value) { values.set(key, JSON.parse(value)); },
+    async get(key) { return values.get(key) ?? null; }
+  };
+  const created = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), { ATLAS_KV: kv }, {
+    fetchImpl: async () => new Response("ok", { status: 200 })
+  });
+  const diagnostic = await created.json();
+  const fetched = await handleGameConnect(request("/api/v1/diagnostics/" + diagnostic.id), { ATLAS_KV: kv });
+  assert.equal(fetched.status, 200);
+  assert.equal((await fetched.json()).id, diagnostic.id);
+});
+
+test("diagnostic retrieval reports unavailable storage explicitly", async () => {
+  const response = await handleGameConnect(request("/api/v1/diagnostics/12345678-1234-1234-1234-123456789abc"));
+  assert.equal(response.status, 503);
+});
+
 test("unknown paths and unsupported methods return API errors", async () => {
   assert.equal((await handleGameConnect(request("/missing"))).status, 404);
   assert.equal((await handleGameConnect(request("/api/v1/diagnostics", "GET"))).status, 405);
