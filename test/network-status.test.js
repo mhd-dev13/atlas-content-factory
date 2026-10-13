@@ -137,3 +137,44 @@ test("successful upstream JSON with sparse operator samples is not proof of heal
   assert.ok(result.sources.filter((source) => source.id !== "arvancloud").every((source) => source.interpreted === false));
   assert.match(formatNetworkStatusFa(result), /پاسخ منابع پایش: 8/);
 });
+
+test("network evidence is summarized by the configured Workers AI model when available", async () => {
+  let aiCalls = 0;
+  const result = await getNetworkStatus({ AI: { run: async (model, options) => {
+    aiCalls += 1;
+    assert.equal(model, "@cf/qwen/qwen3-30b-a3b-fp8");
+    assert.match(options.prompt, /شواهد/);
+    return {
+      response: JSON.stringify({
+        summary: "داده‌های چند منبع دریافت شد؛ شواهد فعلی برای تعیین مسیر برتر بازی کافی نیست.",
+        findings: ["زمان پاسخ منبع با پینگ بازی یکسان نیست."],
+        recommendations: ["از همان دستگاه بازی و اتصال جایگزین را مقایسه کن."],
+        confidence: "کم"
+      })
+    };
+  } } }, {
+    fetchImpl: async () => new Response(JSON.stringify(fixture), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })
+  });
+  assert.equal(aiCalls, 1);
+  assert.equal(result.analysis_provider, "cloudflare_workers_ai");
+  assert.equal(result.overall_fa, "داده‌های چند منبع دریافت شد؛ شواهد فعلی برای تعیین مسیر برتر بازی کافی نیست.");
+  assert.equal(result.findings_fa[0], "زمان پاسخ منبع با پینگ بازی یکسان نیست.");
+  assert.equal(result.confidence, "کم");
+});
+
+test("rule-based analysis remains available when no AI binding is configured", async () => {
+  const result = await getNetworkStatus({}, {
+    fetchImpl: async () => new Response(JSON.stringify(fixture), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })
+  });
+  assert.equal(result.analysis_provider, "rule_based_fallback");
+  assert.ok(result.findings_fa.length > 0);
+  assert.ok(result.recommendations_fa.length > 0);
+  assert.match(formatNetworkStatusFa(result), /جمع‌بندی شواهد/);
+  assert.match(formatNetworkStatusFa(result), /پیشنهادهای بعدی/);
+});
