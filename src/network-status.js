@@ -334,9 +334,10 @@ export function formatNetworkStatusFa(data) {
   }
   if (data.sources?.length) {
     lines.push("");
-    lines.push("منابع مستقل: " + data.source_available_count + "/" + data.source_count + " منبع پاسخ داد");
-    for (const source of data.sources.filter((item) => item.state !== "available").slice(0, 3)) {
-      lines.push("⚪️ " + source.label_fa + ": داده در دسترس نیست");
+    lines.push("پاسخ منابع پایش: " + data.source_available_count + "/" + data.source_count);
+    for (const source of data.sources) {
+      lines.push((source.state === "available" ? "📡 " : "⚪️ ") + source.label_fa + ": " +
+        (source.state === "available" ? "داده دریافت شد؛ تفسیر اختصاصی در حال تکمیل" : "داده در دسترس نیست"));
     }
   }
   lines.push("");
