@@ -1,5 +1,5 @@
 const GAMES = Object.freeze([
-  { id: "steam", nameFa: "استیم", platform: ["pc"], endpoint: "https://store.steampowered.com/", endpointLabelFa: "وب‌سایت فروشگاه استیم" },
+  { id: "steam", nameFa: "استیم", platform: ["pc"], endpoint: "https://api.steampowered.com/ISteamWebAPIUtil/GetServerInfo/v1/", endpointLabelFa: "رابط رسمی اطلاعات سرور استیم" },
   { id: "epic-games", nameFa: "اپیک گیمز", platform: ["pc"], endpoint: "https://store.epicgames.com/", endpointLabelFa: "وب‌سایت فروشگاه اپیک گیمز" },
   { id: "riot-games", nameFa: "ریوت گیمز", platform: ["pc"], endpoint: "https://www.riotgames.com/", endpointLabelFa: "وب‌سایت رسمی ریوت گیمز" }
 ]);
@@ -95,6 +95,10 @@ export function calculateQuality(samples = []) {
 }
 
 export function classifyAccess(check) {
+  if (check?.status === 403) return "restricted";
+  if (check?.status === 429) return "rate_limited";
+  if (Number.isInteger(check?.status) && check.status >= 400 && check.status < 500) return "http_error";
+  if (Number.isInteger(check?.status) && check.status >= 500) return "server_error";
   if (check?.ok === true) return "reachable";
   if (check?.timedOut === true) return "inconclusive";
   if (check?.ok === false) return "unreachable";
@@ -109,12 +113,26 @@ async function checkEndpoint(game, fetchImpl = fetch) {
       redirect: "manual",
       signal: AbortSignal.timeout(4000)
     });
+    const state = classifyAccess({
+      ok: response.status >= 200 && response.status < 400,
+      status: response.status
+    });
+    let noteFa = "پاسخ موفق از مقصد دریافت شد؛ این بررسی از سرور اطلس انجام شده و اتصال دستگاه شما یا سرورهای بازی را ثابت نمی‌کند.";
+    if (state === "restricted") {
+      noteFa = "مقصد درخواست اطلس را با HTTP 403 رد کرد. این ممکن است ناشی از ضدربات یا سیاست دسترسی مقصد باشد و به‌تنهایی فیلترینگ یا مسدود بودن مسیر کاربران را ثابت نمی‌کند.";
+    } else if (state === "rate_limited") {
+      noteFa = "مقصد با HTTP 429 محدودیت درخواست اعلام کرد؛ این نتیجه به‌تنهایی نشانه فیلترینگ نیست.";
+    } else if (state === "http_error") {
+      noteFa = "مقصد یک خطای HTTP در بازه 400 دریافت کرد. پاسخ‌گویی سرور مشخص است، اما بررسی دسترسی موفق نبوده است.";
+    } else if (state === "server_error") {
+      noteFa = "مقصد با خطای سمت سرور پاسخ داد؛ این نتیجه به‌تنهایی وضعیت اتصال کاربران یا سرورهای بازی را مشخص نمی‌کند.";
+    }
     return {
-      state: classifyAccess({ ok: true }),
+      state,
       http_status: response.status,
       duration_ms: Date.now() - started,
       observer: "cloudflare_worker",
-      note_fa: "این بررسی از سرور اطلس انجام شده و وضعیت اتصال دستگاه شما در ایران را ثابت نمی‌کند."
+      note_fa: noteFa
     };
   } catch (error) {
     const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";

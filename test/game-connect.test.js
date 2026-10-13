@@ -126,7 +126,7 @@ test("timeouts are inconclusive, not confirmed blocking", async () => {
   assert.equal(result.quality.state, "not_measured");
 });
 
-test("an HTTP error response still proves the endpoint responded", async () => {
+test("HTTP 403 is classified as destination rejection, not successful access", async () => {
   const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "epic-games" }), {
     DIAGNOSTIC_LIMITER: allowRateLimit,
     ATLAS_KV: memoryKV()
@@ -134,8 +134,40 @@ test("an HTTP error response still proves the endpoint responded", async () => {
     fetchImpl: async () => new Response("denied", { status: 403 })
   });
   const result = await response.json();
-  assert.equal(result.access.state, "reachable");
+  assert.equal(result.access.state, "restricted");
   assert.equal(result.access.http_status, 403);
+  assert.match(result.access.note_fa, /به‌تنهایی فیلترینگ/);
+});
+
+test("Steam probe uses the official public server-info endpoint", async () => {
+  let requestedUrl = "";
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "steam" }), {
+    DIAGNOSTIC_LIMITER: allowRateLimit,
+    ATLAS_KV: memoryKV()
+  }, {
+    fetchImpl: async (url) => {
+      requestedUrl = String(url);
+      return new Response('{"response":{}}', { status: 200 });
+    }
+  });
+  const result = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(result.access.state, "reachable");
+  assert.match(requestedUrl, /^https:\/\/api\.steampowered\.com\/ISteamWebAPIUtil\/GetServerInfo\/v1\/$/);
+});
+
+test("HTTP 429 and 5xx are classified separately from access success", async () => {
+  for (const [status, expectedState] of [[429, "rate_limited"], [503, "server_error"]]) {
+    const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "epic-games" }), {
+      DIAGNOSTIC_LIMITER: allowRateLimit,
+      ATLAS_KV: memoryKV()
+    }, {
+      fetchImpl: async () => new Response("error", { status })
+    });
+    const result = await response.json();
+    assert.equal(result.access.state, expectedState);
+    assert.equal(result.access.http_status, status);
+  }
 });
 
 test("quality calculation uses median latency and mean successive difference", () => {

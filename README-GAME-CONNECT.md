@@ -19,7 +19,7 @@ Diagnostic sessions are stored in the existing `ATLAS_KV` binding for 30 minutes
 
 ## Important measurement limits
 
-The current access check is an HTTP request from the Cloudflare Worker to an allowlisted official website. It is **not** a check from the user's device or Iranian ISP. HTTP 403 means the endpoint responded; it is not proof of reachability to game servers and not proof of government blocking. A timeout is reported as inconclusive.
+The current access check is an HTTP request from the Cloudflare Worker to an allowlisted official endpoint. Steam uses Valve's documented public `ISteamWebAPIUtil/GetServerInfo` endpoint rather than the storefront homepage, which may reject automated probes. It is **not** a check from the user's device or Iranian ISP. HTTP 403 is classified as a destination rejection (for example, anti-bot or access policy), not successful access; it is not proof of government blocking. HTTP 429 and 5xx responses are also distinguished from success. A timeout is reported as inconclusive.
 
 The API deliberately reports in-game latency, jitter, and packet loss as unavailable. Worker-to-website request duration is not presented as player ping. Accurate user-path measurements require a client-side or dedicated probe design that handles CORS, supported protocols, endpoint ownership, and measurement integrity.
 

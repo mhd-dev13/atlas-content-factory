@@ -33,12 +33,12 @@ export const GAME_CONNECT_HTML = String.raw`<!doctype html>
 <div class="error" id="error" role="alert"></div>
 <section class="result" id="result" aria-live="polite"><div class="status"><span class="dot"></span><span id="result-title">نتیجه بررسی</span></div><div class="metrics"><div class="metric"><span>وضعیت وب‌سایت</span><strong id="access">—</strong></div><div class="metric"><span>پاسخ HTTP</span><strong id="http">—</strong></div><div class="metric"><span>زمان پاسخ سرور اطلس</span><strong id="duration">—</strong></div><div class="metric"><span>پینگ بازی</span><strong>اندازه‌گیری نشده</strong></div></div><p class="explain" id="explain"></p></section>
 </section>
-<aside class="card sidecard"><div class="sidehead"><span class="shield">🛡️</span><h2>نتیجه را درست بخوان</h2></div><p>این نسخه یک بررسی محدود انجام می‌دهد؛ هنوز ابزار تست کامل اتصال بازی نیست.</p><ul><li>«پاسخ دریافت شد» یعنی وب‌سایت از سرور اطلس پاسخ داده؛ حتی خطای HTTP هم پاسخ محسوب می‌شود.</li><li>«نامشخص» یعنی بررسی نتوانسته نتیجه قطعی بدهد.</li><li>پینگ داخل بازی، جیتر و افت بسته فعلاً اندازه‌گیری نمی‌شوند.</li></ul><div class="notice">این نتیجه فیلترینگ در ایران یا اتصال از دستگاه تو را اثبات نمی‌کند. برای چنین نتیجه‌ای باید اندازه‌گیری واقعی از مسیر کاربر انجام شود.</div></aside>
+<aside class="card sidecard"><div class="sidehead"><span class="shield">🛡️</span><h2>نتیجه را درست بخوان</h2></div><p>این نسخه یک بررسی محدود انجام می‌دهد؛ هنوز ابزار تست کامل اتصال بازی نیست.</p><ul><li>«پاسخ موفق» یعنی مقصد پاسخ موفق داده است. خطاهایی مثل 403 جداگانه نمایش داده می‌شوند و علت آن‌ها لزوماً فیلترینگ نیست.</li><li>«نامشخص» یعنی بررسی نتوانسته نتیجه قطعی بدهد.</li><li>پینگ داخل بازی، جیتر و افت بسته فعلاً اندازه‌گیری نمی‌شوند.</li></ul><div class="notice">این نتیجه فیلترینگ در ایران یا اتصال از دستگاه تو را اثبات نمی‌کند. برای چنین نتیجه‌ای باید اندازه‌گیری واقعی از مسیر کاربر انجام شود.</div></aside>
 </div>
 <footer class="footer">Atlas Game Connect · نسخه اولیه برای بازبینی · بدون ادعای سنجش پینگ بازی</footer>
 </main>
 <script>
-const labels={reachable:"پاسخ دریافت شد",inconclusive:"نتیجه نامشخص",unreachable:"پاسخی دریافت نشد"};
+const labels={reachable:"پاسخ موفق دریافت شد",restricted:"دسترسی رد شد (403)",rate_limited:"محدودیت درخواست (429)",http_error:"خطای HTTP مقصد",server_error:"خطای سرور مقصد",inconclusive:"نتیجه نامشخص",unreachable:"پاسخی دریافت نشد"};
 const buttons=[...document.querySelectorAll("[data-game]")];
 let selected="steam";
 buttons.forEach(button=>button.addEventListener("click",()=>{selected=button.dataset.game;buttons.forEach(item=>item.setAttribute("aria-pressed",String(item===button)));}));
