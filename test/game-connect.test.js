@@ -32,6 +32,15 @@ test("malformed JSON is rejected", async () => {
   assert.equal((await response.json()).error, "invalid_json");
 });
 
+test("oversized diagnostic payload is rejected", async () => {
+  const response = await handleGameConnect(new Request("https://atlas.example/api/v1/diagnostics", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ game: "steam", extra: "x".repeat(3000) })
+  }));
+  assert.equal(response.status, 413);
+});
+
 test("unsupported game is rejected without a network request", async () => {
   let called = false;
   const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "https://example.com" }), {}, {
