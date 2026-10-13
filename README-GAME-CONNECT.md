@@ -1,4 +1,4 @@
-# Atlas Game Connect MVP
+# Atlas — release readiness and Game Connect
 
 A Persian-language diagnostic API isolated behind `/health` and `/api/v1/*`. The existing Telegram/content handler remains available for requests outside these routes.
 
@@ -61,3 +61,12 @@ The website at `GET /` now includes a live animated network-radar panel above th
 The chart is intentionally based on actual API responses, not generated demo values. It starts with the first received sample and keeps up to 20 samples in browser memory. The API currently caches upstream collection for five minutes, so polling the page more often does not imply new upstream measurements every minute. A successful source response is not proof that a player's connection is healthy; the public sources do not measure that player's in-game ping, jitter, packet loss, or route.
 
 This is a website UI change on the experimental `feature/atlas-game-connect-mvp` branch. It does not deploy the Worker or change production traffic.
+
+
+## Release hardening
+
+- The website root sends a restrictive Content Security Policy, frame protection, no-sniff, no-store, referrer, and permissions-policy headers.
+- If `TELEGRAM_WEBHOOK_SECRET` is configured in the Worker environment, POST webhook requests must include Telegram's matching `X-Telegram-Bot-Api-Secret-Token` header. This is optional for backward compatibility; configure the same random secret with Telegram before relying on the protection.
+- The release workflow tests and validates the Worker bundle only. Its Wrangler step is a dry run and does not publish a deployment.
+- The full content-generation pipeline remains available through Telegram. The current website provides the network dashboard and game-access diagnostics; it does not yet expose all Reel/image/video creation workflows as browser tools.
+- A production release still requires verifying the deployed Cloudflare Worker, live bindings/rate-limit namespace, Telegram webhook settings, and a post-deploy smoke test. No production secrets are stored in this repository.
