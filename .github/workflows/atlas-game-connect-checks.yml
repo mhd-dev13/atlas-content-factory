@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/atlas-game-connect-mvp
+      - release/atlas-v1
   pull_request:
     branches:
       - main
