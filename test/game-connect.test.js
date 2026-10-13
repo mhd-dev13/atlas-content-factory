@@ -37,7 +37,7 @@ test("game catalog does not expose arbitrary probe URLs", async () => {
 test("malformed JSON is rejected", async () => {
   const response = await handleGameConnect(new Request("https://atlas.example/api/v1/diagnostics", {
     method: "POST", headers: { "content-type": "application/json" }, body: "{"
-  }));
+  }), { DIAGNOSTIC_LIMITER: allowRateLimit });
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error, "invalid_json");
 });
@@ -89,7 +89,9 @@ test("rate-limited diagnostic creation does not run the outbound probe", async (
 
 test("unsupported game is rejected without a network request", async () => {
   let called = false;
-  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "https://example.com" }), {}, {
+  const response = await handleGameConnect(request("/api/v1/diagnostics", "POST", { game: "https://example.com" }), {
+    DIAGNOSTIC_LIMITER: allowRateLimit
+  }, {
     fetchImpl: async () => { called = true; throw new Error("must not run"); }
   });
   assert.equal(response.status, 422);
