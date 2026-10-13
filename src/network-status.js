@@ -130,25 +130,34 @@ export function normalizeArvanRadar(payload, now = new Date().toISOString()) {
   const operators = [...byOperator.entries()].map(([name, items]) => {
     const average = items.reduce((sum, item) => sum + item.severity, 0) / items.length;
     const disrupted = items.filter((item) => item.severity >= 1).length;
-    const status = average < 0.5 ? "عادی" : average < 1.5 ? "اختلال جزئی" : average < 2.5 ? "اختلال متوسط" : average < 3.5 ? "اختلال زیاد" : "اختلال شدید";
+    const knownServiceCount = new Set(items.filter((item) => item.service !== "سرویس نامشخص").map((item) => item.service)).size;
+    const status = disrupted > 0
+      ? average < 1.5 ? "اختلال جزئی" : average < 2.5 ? "اختلال متوسط" : average < 3.5 ? "اختلال زیاد" : "اختلال شدید"
+      : knownServiceCount < 3
+        ? "دادهٔ محدود"
+        : "عادی";
     return {
       operator: name,
       status,
       severity: Math.round(average * 100) / 100,
       checked_services: items.length,
+      known_service_count: knownServiceCount,
       disrupted_services: disrupted,
       services: items.map(({ service, status: serviceStatus }) => ({ name: service, status: serviceStatus }))
     };
   }).sort((a, b) => a.operator.localeCompare(b.operator, "fa"));
 
   const disruptedOperators = operators.filter((item) => item.disrupted_services > 0).length;
+  const limitedOperators = operators.filter((item) => item.status === "دادهٔ محدود").length;
   const overall = operators.length === 0
     ? "دادهٔ کافی دریافت نشد"
-    : disruptedOperators === 0
-      ? "در نمونه‌های موجود اختلال ثبت نشده"
-      : disruptedOperators === operators.length
-        ? "در همهٔ اپراتورهای دارای داده نشانهٔ اختلال دیده شد"
-        : "اختلال در بخشی از اپراتورهای پایش‌شده";
+    : disruptedOperators === 0 && limitedOperators > 0
+      ? "نمونه‌های موجود برای تأیید سلامت اینترنت کافی نیستند"
+      : disruptedOperators === 0
+        ? "در نمونه‌های کافی و قابل‌تفسیر نشانهٔ اختلال ثبت نشده"
+        : disruptedOperators === operators.length
+          ? "در همهٔ اپراتورهای دارای داده نشانهٔ اختلال دیده شد"
+          : "اختلال در بخشی از اپراتورهای پایش‌شده";
 
   return {
     provider: "iranblock_arvancloud",
@@ -261,9 +270,9 @@ export function formatNetworkStatusFa(data) {
     ""
   ];
   for (const operator of data.operators.slice(0, 10)) {
+    const icon = operator.disrupted_services > 0 ? "🟠 " : operator.status === "دادهٔ محدود" ? "⚪️ " : "🟢 ";
     lines.push(
-      (operator.disrupted_services > 0 ? "🟠 " : "🟢 ") +
-      operator.operator + ": " + operator.status +
+      icon + operator.operator + ": " + operator.status +
       " (" + operator.disrupted_services + "/" + operator.checked_services + " مقصد دارای نشانهٔ اختلال)"
     );
     const disrupted = operator.services.filter((service) => service.status !== "عادی");

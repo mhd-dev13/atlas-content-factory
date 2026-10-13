@@ -97,3 +97,20 @@ test("network status endpoint allows GET and rejects other methods", async () =>
   const post = await handleNetworkStatus(new Request("https://atlas.example/api/v1/network-status", { method: "POST" }), {});
   assert.equal(post.status, 405);
 });
+
+
+test("limited single-destination samples are not presented as healthy", () => {
+  const sparse = {
+    data: [
+      { operator: "Asiatech", score: 0 },
+      { operator: "Irancell", score: 0 }
+    ]
+  };
+  const result = normalizeArvanRadar(sparse);
+  assert.match(result.overall_fa, /برای تأیید سلامت اینترنت کافی نیستند/);
+  assert.ok(result.operators.every((item) => item.status === "دادهٔ محدود"));
+  const message = formatNetworkStatusFa(result);
+  assert.match(message, /⚪️/);
+  assert.match(message, /دادهٔ محدود/);
+  assert.doesNotMatch(message, /🟢 آسیاتک: عادی/);
+});
