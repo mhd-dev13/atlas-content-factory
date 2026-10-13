@@ -8,13 +8,15 @@ The Telegram bot and Persian website use the same game catalog (`getGameCatalog`
 
 Each catalog entry exposes an official source URL, a Persian source label, and an explicit measurement-scope note. Steam's probe is documented by Valve's Steamworks Web API docs; Epic Games and Riot Games checks target their official public sites. These checks only measure the Worker-to-endpoint HTTP response, not in-game connectivity or the user's ISP route.
 
-## Internet status in Telegram
+## Multi-source internet evidence in Telegram
 
-The Telegram bot includes **🌐 وضعیت اینترنت** and supports `/network` and `/internet`. The shared endpoint `GET /api/v1/network-status` reads the public IranBlock ArvanCloud Radar feed and caches a validated normalized snapshot in the existing `ATLAS_KV` for up to five minutes. The bot intentionally displays the status and operator summary without showing a source link, as requested; the provider and limitation metadata remain in the returned API payload and project documentation.
+The Telegram bot includes **🌐 وضعیت اینترنت** and supports `/network` and `/internet`. The shared endpoint `GET /api/v1/network-status` checks eight representative public IranBlock API paths in parallel: ArvanCloud Radar, ISP monitoring, direct service-connectivity probes, OONI, IODA, Cloudflare Radar quality, RIPE routing, and source-freshness metadata. Results are cached in the existing `ATLAS_KV` under a versioned multi-source key for up to five minutes. The Telegram summary shows which source endpoints returned data without exposing URLs.
 
-The Radar view is based on monitored points of presence and destinations, not each user's home router or mobile connection. Missing or unrecognized upstream data is reported as unavailable, never as proof that the internet is healthy. Per-operator results are only displayed when the upstream response contains records the normalizer can identify.
+These are eight representative data paths, not every API endpoint or every raw collector. The ArvanCloud response alone currently has a dedicated operator/service normalizer; the other families are reported as source availability until their exact schemas and semantics are mapped and tested. A successful HTTP/JSON response from a source is not a healthy-network verdict. No-data, stale data, small samples, and unrecognized schemas must not be interpreted as normal service. Per-operator statuses are based only on identifiable ArvanCloud records and remain marked as limited when destination coverage is sparse.
 
-User-reported DNS/VPN results are deliberately a separate follow-up feature. They should use explicit opt-in reports and/or public, documented measurement datasets (such as OONI) with sample counts and freshness, rather than silently scraping arbitrary Google reviews or Telegram conversations.
+The sources observe different things from different vantage points. OONI includes volunteer measurements from inside Iran; direct connectivity probes can run from outside Iran; IODA and RIPE observe outage and routing signals; Cloudflare quality metrics are not the player's own game path. These evidence families must be kept distinct, checked for freshness and sample size, and combined only with an explicit, source-specific rule.
+
+User-reported DNS/VPN results are deliberately a separate follow-up feature. They should use explicit opt-in reports and/or public, documented measurement datasets with sample counts and freshness, rather than silently scraping arbitrary Google reviews or Telegram conversations.
 
 ## Endpoints
 
