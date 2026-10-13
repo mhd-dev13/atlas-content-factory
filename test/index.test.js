@@ -20,6 +20,38 @@ test("worker serves the Persian RTL UI at the root", async () => {
   assert.match(html, /api\/v1\/diagnostics/);
 });
 
+test("website response includes browser security headers", async () => {
+  const response = await worker.fetch(request("/"), {});
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.match(response.headers.get("content-security-policy"), /default-src 'self'/);
+  assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+});
+
+test("Telegram webhook rejects a request with a wrong configured secret", async () => {
+  const response = await worker.fetch(request("/", "POST", {}), {
+    TELEGRAM_WEBHOOK_SECRET: "expected-secret"
+  });
+  assert.equal(response.status, 403);
+  assert.equal(await response.text(), "Forbidden");
+});
+
+test("Telegram webhook accepts the configured secret without changing normal routing", async () => {
+  const response = await worker.fetch(new Request("https://atlas.example/", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-telegram-bot-api-secret-token": "expected-secret"
+    },
+    body: JSON.stringify({})
+  }), {
+    TELEGRAM_WEBHOOK_SECRET: "expected-secret"
+  });
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "OK");
+});
+
 test("worker integration routes health to Game Connect", async () => {
   const response = await worker.fetch(request("/health"), {});
   assert.equal(response.status, 200);
