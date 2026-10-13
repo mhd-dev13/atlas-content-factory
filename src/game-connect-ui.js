@@ -4,7 +4,7 @@ export const GAME_CONNECT_HTML = String.raw`<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b1020">
-<title>Atlas Game Connect | بررسی اتصال بازی</title>
+<title>Atlas | رادار شبکه و بررسی اتصال بازی</title>
 <style>
 :root{color-scheme:dark;--bg:#0b1020;--panel:#111a2e;--panel2:#17233b;--line:#293954;--text:#f4f7ff;--muted:#a6b4ce;--mint:#70f0c0;--blue:#87a8ff;--danger:#ffb1b1}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 85% -10%,#203c60 0,transparent 65%),var(--bg);color:var(--text);font-family:Tahoma,"Segoe UI",sans-serif;line-height:1.8;min-height:100vh}
@@ -39,8 +39,8 @@ export const GAME_CONNECT_HTML = String.raw`<!doctype html>
 </head>
 <body>
 <main class="wrap">
-<header class="top"><div class="brand"><div class="logo" aria-hidden="true">⌁</div><span>ATLAS <span style="color:var(--mint)">GAME CONNECT</span></span></div><span class="tag">نسخه آزمایشی · MVP</span></header>
-<section class="hero"><div class="eyebrow">برای گیمرها، ساده و شفاف</div><h1>قبل از بازی، وضعیت دسترسی رو بررسی کن.</h1><p>یک سرویس را انتخاب کن تا اطلس دسترسی سرور خودش به وب‌سایت رسمی آن را بررسی کند. این بررسی، پینگ یا کیفیت اینترنت دستگاه تو را اندازه نمی‌گیرد.</p></section>
+<header class="top"><div class="brand"><div class="logo" aria-hidden="true">⌁</div><span>ATLAS <span style="color:var(--mint)">NETWORK</span></span></div><span class="tag">پیش‌نمایش نسخه ۱</span></header>
+<section class="hero"><div class="eyebrow">برای گیمرها، ساده و شفاف</div><h1>شبکه را ببین؛ بعد هوشمندانه‌تر بازی کن.</h1><p>اطلس شواهد چند منبع عمومی را جمع‌بندی می‌کند و دسترسی سرور خود را به سرویس‌های منتخب می‌سنجد. این داده‌ها به‌تنهایی پینگ یا کیفیت مسیر اینترنت دستگاه تو را نشان نمی‌دهند.</p></section>
 <section class="live-dashboard" aria-labelledby="live-title">
 <div class="dash-head"><div><div class="dash-kicker">ATLAS NETWORK RADAR</div><h2 id="live-title">رادار زندهٔ وضعیت شبکه</h2><p>جمع‌بندی منابع عمومی پایش اینترنت، با به‌روزرسانی خودکار</p></div><span class="live-pill"><i class="live-pulse"></i><span id="live-state">در حال اتصال به منابع…</span></span></div>
 <div class="dash-metrics">
