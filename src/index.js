@@ -56,7 +56,7 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return textResponse("ATLAS CONTENT FACTORY 🤖\nStatus: ONLINE\nVersion: 2.0.0");
+      return textResponse("ATLAS SMART CONNECT 🔌\nStatus: ONLINE\nVersion: 1.0.0");
     }
 
     try {
