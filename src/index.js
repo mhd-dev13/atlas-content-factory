@@ -23,11 +23,21 @@ function textResponse(body, status = 200, extraHeaders = {}) {
   });
 }
 
+function jsonError(error, status) {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      ...SECURITY_HEADERS
+    }
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Serve the Persian mobile UI; security headers apply to HTML responses.
     if (url.pathname === "/" && request.method === "GET") {
       return new Response(GAME_CONNECT_HTML, {
         headers: {
@@ -46,17 +56,20 @@ export default {
       return handleGameConnect(request, env);
     }
 
-    // If configured, Telegram's secret header must match before parsing the update.
-    // This is backwards-compatible with installations that have not configured it yet.
-    if (request.method === "POST" && env?.TELEGRAM_WEBHOOK_SECRET) {
-      const suppliedSecret = request.headers.get("x-telegram-bot-api-secret-token") || "";
-      if (suppliedSecret !== env.TELEGRAM_WEBHOOK_SECRET) {
-        return textResponse("Forbidden", 403);
-      }
+    // The only remaining route is the Telegram webhook at POST /.
+    if (url.pathname !== "/" || request.method !== "POST") {
+      if (request.method === "POST") return textResponse("Not Found", 404);
+      return textResponse("ATLAS SMART CONNECT 🔌\nStatus: ONLINE\nVersion: 1.0.0");
     }
 
-    if (request.method !== "POST") {
-      return textResponse("ATLAS SMART CONNECT 🔌\nStatus: ONLINE\nVersion: 1.0.0");
+    // Fail closed until a webhook secret is explicitly configured.
+    if (!env?.TELEGRAM_WEBHOOK_SECRET) {
+      return jsonError("webhook_not_configured", 503);
+    }
+
+    const suppliedSecret = request.headers.get("x-telegram-bot-api-secret-token") || "";
+    if (suppliedSecret !== env.TELEGRAM_WEBHOOK_SECRET) {
+      return jsonError("unauthorized", 401);
     }
 
     try {
@@ -67,9 +80,8 @@ export default {
       await routeUpdate(update, env);
       return textResponse("OK");
     } catch (error) {
-      // Do not log stack traces or request bodies, which may contain user content.
       console.error("ATLAS_WEBHOOK_ERROR", error?.name || "Error");
-      // Telegram should not retry malformed or internally failed updates indefinitely.
+      // Acknowledge processing failures to avoid unbounded Telegram retries.
       return textResponse("OK");
     }
   }
