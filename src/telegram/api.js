@@ -65,13 +65,7 @@ export async function telegram(
 
   if (!data.ok) {
 
-    throw new Error(
-
-      `Telegram API error: ${JSON.stringify(
-        data
-      )}`
-
-    );
+    throw new Error(`TELEGRAM_API_FAILED:${method}:${response.status}`);
 
   }
 
