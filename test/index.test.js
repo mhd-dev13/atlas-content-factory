@@ -33,8 +33,21 @@ test("worker integration routes the games catalog to Game Connect", async () => 
   assert.ok(data.games.some((game) => game.id === "steam"));
 });
 
-test("worker integration keeps the legacy Telegram POST root route", async () => {
+test("worker rejects Telegram webhook requests until a secret is configured", async () => {
   const response = await worker.fetch(request("/", "POST", {}), {});
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "webhook_not_configured");
+});
+
+test("worker accepts Telegram webhook only with the configured secret", async () => {
+  const response = await worker.fetch(new Request("https://atlas.example/", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-telegram-bot-api-secret-token": "test-secret"
+    },
+    body: "{}"
+  }), { TELEGRAM_WEBHOOK_SECRET: "test-secret" });
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "OK");
 });

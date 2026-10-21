@@ -3,53 +3,86 @@ import { handleGameConnect } from "./game-connect.js";
 import { GAME_CONNECT_HTML } from "./game-connect-ui.js";
 import { handleNetworkStatus } from "./network-status.js";
 
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+  "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+};
+
+function textResponse(body, status = 200, extraHeaders = {}) {
+  return new Response(body, {
+    status,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      ...SECURITY_HEADERS,
+      ...extraHeaders
+    }
+  });
+}
+
+function jsonError(error, status) {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      ...SECURITY_HEADERS
+    }
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Serve the Persian mobile UI on GET /; preserve Telegram's POST / webhook.
     if (url.pathname === "/" && request.method === "GET") {
       return new Response(GAME_CONNECT_HTML, {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
-          "x-content-type-options": "nosniff",
-          "referrer-policy": "strict-origin-when-cross-origin"
+          ...SECURITY_HEADERS
         }
       });
     }
 
-    // Keep network status as a separate adapter while sharing the same API host.
     if (url.pathname === "/api/v1/network-status") {
       return handleNetworkStatus(request, env);
     }
 
-    // Route Game Connect endpoints and their preflight requests to the API.
-    if (
-      url.pathname === "/health" ||
-      url.pathname.startsWith("/api/v1/")
-    ) {
+    if (url.pathname === "/health" || url.pathname.startsWith("/api/v1/")) {
       return handleGameConnect(request, env);
     }
 
-    if (request.method !== "POST") {
-      return new Response(
-        "ATLAS CONTENT FACTORY 🤖\nStatus: ONLINE\nVersion: 2.0.0",
-        {
-          headers: {
-            "content-type": "text/plain; charset=utf-8"
-          }
-        }
-      );
+    // The only remaining route is the Telegram webhook at POST /.
+    if (url.pathname !== "/" || request.method !== "POST") {
+      if (request.method === "POST") return textResponse("Not Found", 404);
+      return textResponse("ATLAS SMART CONNECT 🔌\nStatus: ONLINE\nVersion: 1.0.0");
+    }
+
+    // Fail closed until a webhook secret is explicitly configured.
+    if (!env?.TELEGRAM_WEBHOOK_SECRET) {
+      return jsonError("webhook_not_configured", 503);
+    }
+
+    const suppliedSecret = request.headers.get("x-telegram-bot-api-secret-token") || "";
+    if (suppliedSecret !== env.TELEGRAM_WEBHOOK_SECRET) {
+      return jsonError("unauthorized", 401);
     }
 
     try {
       const update = await request.json();
+      if (!update || typeof update !== "object" || Array.isArray(update)) {
+        return textResponse("Bad Request", 400);
+      }
       await routeUpdate(update, env);
-      return new Response("OK");
+      return textResponse("OK");
     } catch (error) {
-      console.error("ATLAS_ERROR:", error?.stack || error);
-      return new Response("OK");
+      console.error("ATLAS_WEBHOOK_ERROR", error?.name || "Error");
+      // Acknowledge processing failures to avoid unbounded Telegram retries.
+      return textResponse("OK");
     }
   }
 };

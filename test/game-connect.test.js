@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateQuality, classifyAccess, createGameDiagnostic, getGameCatalog, handleGameConnect } from "../src/game-connect.js";
+import worker from "../src/index.js";
 
 function request(path, method = "GET", body) {
   return new Request("https://atlas.example" + path, {
@@ -252,4 +253,45 @@ test("diagnostic retrieval reports unavailable storage explicitly", async () => 
 test("unknown paths and unsupported methods return API errors", async () => {
   assert.equal((await handleGameConnect(request("/missing"))).status, 404);
   assert.equal((await handleGameConnect(request("/api/v1/diagnostics", "GET"))).status, 405);
+});
+
+
+function webhookRequest(secret) {
+  const headers = { "content-type": "application/json" };
+  if (secret !== undefined) headers["x-telegram-bot-api-secret-token"] = secret;
+  return new Request("https://atlas.example/", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({})
+  });
+}
+
+test("Telegram webhook fails closed when the secret is not configured", async () => {
+  const response = await worker.fetch(webhookRequest("anything"), {});
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "webhook_not_configured");
+});
+
+test("Telegram webhook rejects missing or incorrect secret tokens", async () => {
+  for (const request of [webhookRequest(), webhookRequest("wrong")]) {
+    const response = await worker.fetch(request, { TELEGRAM_WEBHOOK_SECRET: "correct-secret" });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error, "unauthorized");
+  }
+});
+
+test("Telegram webhook accepts a request with the configured secret", async () => {
+  const response = await worker.fetch(webhookRequest("correct-secret"), {
+    TELEGRAM_WEBHOOK_SECRET: "correct-secret"
+  });
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "OK");
+});
+
+test("unknown POST routes are not treated as Telegram webhooks", async () => {
+  const response = await worker.fetch(new Request("https://atlas.example/unexpected", {
+    method: "POST",
+    body: "{}"
+  }), { TELEGRAM_WEBHOOK_SECRET: "correct-secret" });
+  assert.equal(response.status, 404);
 });
