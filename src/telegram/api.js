@@ -42,20 +42,3 @@ export async function sendMessage(env, chatId, text) {
   if (!safeText) throw new Error("TELEGRAM_MESSAGE_EMPTY");
   return telegram(env, "sendMessage", { chat_id: chatId, text: safeText });
 }
-
-function safeCaption(caption) {
-  const value = String(caption || "").trim();
-  if (!value) return "";
-  if (value.length <= TELEGRAM_MAX_CAPTION) return value;
-  return value.slice(0, TELEGRAM_MAX_CAPTION - 3) + "...";
-}
-
-export async function sendVideo(env, chatId, videoUrl, caption = "") {
-  if (!videoUrl) throw new Error("VIDEO_URL_MISSING");
-  return telegram(env, "sendVideo", {
-    chat_id: chatId,
-    video: videoUrl,
-    caption: safeCaption(caption),
-    supports_streaming: true
-  });
-}
