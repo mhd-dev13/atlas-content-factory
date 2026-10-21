@@ -4,7 +4,6 @@
 
 import {
   sendMessage,
-  sendVideo,
   telegram
 } from "./telegram/api.js";
 
@@ -16,18 +15,6 @@ import {
 import {
   checkContent
 } from "./content/quality.js";
-
-import {
-  generateImage
-} from "./video/image.js";
-
-import {
-  renderImageToVideo
-} from "./video/renderer.js";
-
-import {
-  createReel
-} from "./reel/pipeline.js";
 
 import {
   createGameDiagnostic,
@@ -74,24 +61,12 @@ async function sendMainMenu(
           "",
           "🟢 سیستم آنلاین است.",
           "",
-          "با یک دکمه یک Reel کامل بساز:",
-          "",
-          "🎬 ایده → تصویر → Motion → ویدیو"
+          "از منوی زیر برای تولید محتوا یا بررسی اتصال استفاده کن."
         ].join("\n"),
 
       reply_markup: {
 
         inline_keyboard: [
-
-          [
-            {
-              text:
-                "🎬 ساخت Reel",
-
-              callback_data:
-                "atlas_create_reel"
-            }
-          ],
 
           [
             {
@@ -108,16 +83,6 @@ async function sendMainMenu(
 
               callback_data:
                 "atlas_status"
-            }
-          ],
-
-          [
-            {
-              text:
-                "🎥 ساخت ویدیو",
-
-              callback_data:
-                "atlas_video"
             }
           ],
 
@@ -227,24 +192,6 @@ export async function routeUpdate(
     }
 
     // --------------------------------------------------------
-    // 🎬 CREATE REEL
-    // --------------------------------------------------------
-
-    if (
-      data ===
-      "atlas_create_reel"
-    ) {
-
-      await createReel(
-        env,
-        chatId
-      );
-
-      return;
-    }
-
-
-    // --------------------------------------------------------
     // 💡 IDEA
     // --------------------------------------------------------
 
@@ -272,24 +219,6 @@ export async function routeUpdate(
     ) {
 
       await sendStatus(
-        env,
-        chatId
-      );
-
-      return;
-    }
-
-
-    // --------------------------------------------------------
-    // 🎥 VIDEO
-    // --------------------------------------------------------
-
-    if (
-      data ===
-      "atlas_video"
-    ) {
-
-      await createVideo(
         env,
         chatId
       );
@@ -357,24 +286,6 @@ export async function routeUpdate(
   }
 
   // ==========================================================
-  // 🎬 REEL
-  // ==========================================================
-
-  if (
-    text ===
-    "/reel"
-  ) {
-
-    await createReel(
-      env,
-      chatId
-    );
-
-    return;
-  }
-
-
-  // ==========================================================
   // 📊 STATUS
   // ==========================================================
 
@@ -420,24 +331,6 @@ export async function routeUpdate(
   ) {
 
     await createPost(
-      env,
-      chatId
-    );
-
-    return;
-  }
-
-
-  // ==========================================================
-  // 🎥 VIDEO
-  // ==========================================================
-
-  if (
-    text ===
-    "/video"
-  ) {
-
-    await createVideo(
       env,
       chatId
     );
@@ -558,10 +451,6 @@ async function sendStatus(
       "🧠 AI Engine: ACTIVE",
       "🏭 Content Engine: ACTIVE",
       "🛡️ Quality Engine: ACTIVE",
-      "🖼️ Image Engine: ACTIVE",
-      "🎬 Video Engine: ACTIVE",
-      "🔍 Motion Engine: ACTIVE",
-      "🎧 Audio Engine: READY",
       "📡 Telegram: CONNECTED"
     ].join("\n")
   );
@@ -637,10 +526,7 @@ async function createIdea(
         "",
         `📝 CTA: ${idea.cta || ""}`,
         "",
-        "━━━━━━━━━━━━━━",
-        "",
-        "🎬 برای ساخت کامل Reel:",
-        "روی دکمه 🎬 ساخت Reel بزن."
+
       ].join("\n")
     );
 
