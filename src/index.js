@@ -3,16 +3,23 @@ import { handleGameConnect } from "./game-connect.js";
 import { GAME_CONNECT_HTML } from "./game-connect-ui.js";
 import { handleNetworkStatus } from "./network-status.js";
 
-const JSON_HEADERS = {
-  "content-type": "application/json; charset=utf-8",
-  "cache-control": "no-store",
-  "x-content-type-options": "nosniff"
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+  "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 };
 
-function jsonError(error, status) {
-  return new Response(JSON.stringify({ error }), {
+function textResponse(body, status = 200, extraHeaders = {}) {
+  return new Response(body, {
     status,
-    headers: JSON_HEADERS
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      ...SECURITY_HEADERS,
+      ...extraHeaders
+    }
   });
 }
 
@@ -20,14 +27,13 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Serve the Persian mobile UI; never expose secrets in public responses.
+    // Serve the Persian mobile UI; security headers apply to HTML responses.
     if (url.pathname === "/" && request.method === "GET") {
       return new Response(GAME_CONNECT_HTML, {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "no-store",
-          "x-content-type-options": "nosniff",
-          "referrer-policy": "strict-origin-when-cross-origin"
+          ...SECURITY_HEADERS
         }
       });
     }
@@ -40,44 +46,31 @@ export default {
       return handleGameConnect(request, env);
     }
 
-    // Telegram webhook is the only accepted write route.
-    if (url.pathname !== "/" || request.method !== "POST") {
-      return jsonError("not_found", 404);
+    // If configured, Telegram's secret header must match before parsing the update.
+    // This is backwards-compatible with installations that have not configured it yet.
+    if (request.method === "POST" && env?.TELEGRAM_WEBHOOK_SECRET) {
+      const suppliedSecret = request.headers.get("x-telegram-bot-api-secret-token") || "";
+      if (suppliedSecret !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return textResponse("Forbidden", 403);
+      }
     }
 
-    // Configure TELEGRAM_WEBHOOK_SECRET in Worker secrets before deployment
-    // and set the same value as Telegram's webhook secret_token.
-    const expectedSecret = env?.TELEGRAM_WEBHOOK_SECRET;
-    if (typeof expectedSecret !== "string" || expectedSecret.length < 1) {
-      console.error("ATLAS_WEBHOOK_SECRET_NOT_CONFIGURED");
-      return jsonError("webhook_not_configured", 503);
-    }
-
-    const providedSecret = request.headers.get("x-telegram-bot-api-secret-token");
-    if (typeof providedSecret !== "string" || providedSecret !== expectedSecret) {
-      return jsonError("unauthorized", 401);
-    }
-
-    let update;
-    try {
-      update = await request.json();
-    } catch {
-      return jsonError("invalid_json", 400);
+    if (request.method !== "POST") {
+      return textResponse("ATLAS CONTENT FACTORY 🤖\nStatus: ONLINE\nVersion: 2.0.0");
     }
 
     try {
+      const update = await request.json();
+      if (!update || typeof update !== "object" || Array.isArray(update)) {
+        return textResponse("Bad Request", 400);
+      }
       await routeUpdate(update, env);
-      return new Response("OK", {
-        headers: { "cache-control": "no-store" }
-      });
+      return textResponse("OK");
     } catch (error) {
-      // Do not log exception messages/stacks: they can contain request or provider data.
-      console.error("ATLAS_WEBHOOK_PROCESSING_FAILED", error?.name || "Error");
-      // Acknowledge the update to avoid an uncontrolled retry storm. Failed updates
-      // are observable by a stable code only; durable retry handling is a follow-up.
-      return new Response("OK", {
-        headers: { "cache-control": "no-store" }
-      });
+      // Do not log stack traces or request bodies, which may contain user content.
+      console.error("ATLAS_WEBHOOK_ERROR", error?.name || "Error");
+      // Telegram should not retry malformed or internally failed updates indefinitely.
+      return textResponse("OK");
     }
   }
 };
