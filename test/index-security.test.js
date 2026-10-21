@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 import worker from "../src/index.js";
 
 function request(path = "/", method = "GET", headers = {}, body) {
-  return new Request("https://atlas.example" + path, {
-    method,
-    headers,
-    body
-  });
+  return new Request("https://atlas.example" + path, { method, headers, body });
 }
 
 test("homepage sets baseline browser security headers", async () => {
@@ -19,39 +15,33 @@ test("homepage sets baseline browser security headers", async () => {
   assert.match(response.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
 });
 
-test("configured Telegram webhook secret rejects missing header before parsing body", async () => {
-  const response = await worker.fetch(
-    request("/", "POST", { "content-type": "application/json" }, "{invalid"),
-    { TELEGRAM_WEBHOOK_SECRET: "test-secret" }
-  );
-  assert.equal(response.status, 403);
-  assert.equal(await response.text(), "Forbidden");
+test("webhook fails closed when secret is not configured", async () => {
+  const response = await worker.fetch(request("/", "POST", { "content-type": "application/json" }, "{}"), {});
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "webhook_not_configured");
 });
 
-test("configured Telegram webhook secret rejects an incorrect header", async () => {
-  const response = await worker.fetch(
-    request("/", "POST", {
-      "content-type": "application/json",
-      "x-telegram-bot-api-secret-token": "wrong"
-    }, "{}"),
-    { TELEGRAM_WEBHOOK_SECRET: "test-secret" }
-  );
-  assert.equal(response.status, 403);
+test("webhook rejects missing or incorrect secret before parsing body", async () => {
+  for (const headers of [
+    { "content-type": "application/json" },
+    { "content-type": "application/json", "x-telegram-bot-api-secret-token": "wrong" }
+  ]) {
+    const response = await worker.fetch(request("/", "POST", headers, "{invalid"), { TELEGRAM_WEBHOOK_SECRET: "test-secret" });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error, "unauthorized");
+  }
 });
 
-test("correct Telegram webhook secret allows a valid update", async () => {
-  const response = await worker.fetch(
-    request("/", "POST", {
-      "content-type": "application/json",
-      "x-telegram-bot-api-secret-token": "test-secret"
-    }, "{}"),
-    { TELEGRAM_WEBHOOK_SECRET: "test-secret" }
-  );
+test("correct webhook secret allows a valid update", async () => {
+  const response = await worker.fetch(request("/", "POST", {
+    "content-type": "application/json",
+    "x-telegram-bot-api-secret-token": "test-secret"
+  }, "{}"), { TELEGRAM_WEBHOOK_SECRET: "test-secret" });
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "OK");
 });
 
-test("webhook remains compatible when no secret has been configured", async () => {
-  const response = await worker.fetch(request("/", "POST", { "content-type": "application/json" }, "{}"), {});
-  assert.equal(response.status, 200);
+test("unknown POST routes return 404 instead of being treated as webhooks", async () => {
+  const response = await worker.fetch(request("/unexpected", "POST", {}, "{}"), { TELEGRAM_WEBHOOK_SECRET: "test-secret" });
+  assert.equal(response.status, 404);
 });
