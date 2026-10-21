@@ -1,20 +1,11 @@
 // ============================================================
-// 🤖 ATLAS CONTENT FACTORY — ROUTER
+// 🔌 ATLAS SMART CONNECT — TELEGRAM ROUTER
 // ============================================================
 
 import {
   sendMessage,
   telegram
 } from "./telegram/api.js";
-
-import {
-  generateIdea,
-  generatePost
-} from "./content/engine.js";
-
-import {
-  checkContent
-} from "./content/quality.js";
 
 import {
   createGameDiagnostic,
@@ -25,17 +16,6 @@ import {
   formatNetworkStatusFa,
   getNetworkStatus
 } from "./network-status.js";
-
-
-// ============================================================
-// ⚙️ MEMORY KEYS
-// ============================================================
-
-function getIdeaKey(chatId) {
-
-  return `atlas:content:idea:${chatId}`;
-
-}
 
 
 // ============================================================
@@ -57,11 +37,11 @@ async function sendMainMenu(
 
       text:
         [
-          "🤖 ATLAS CONTENT FACTORY",
+          "🔌 ATLAS SMART CONNECT",
           "",
           "🟢 سیستم آنلاین است.",
           "",
-          "از منوی زیر برای تولید محتوا یا بررسی اتصال استفاده کن."
+          "از منوی زیر برای بررسی اتصال بازی و وضعیت شبکه استفاده کن."
         ].join("\n"),
 
       reply_markup: {
@@ -69,14 +49,6 @@ async function sendMainMenu(
         inline_keyboard: [
 
           [
-            {
-              text:
-                "💡 ساخت ایده",
-
-              callback_data:
-                "atlas_idea"
-            },
-
             {
               text:
                 "📊 وضعیت",
@@ -192,24 +164,6 @@ export async function routeUpdate(
     }
 
     // --------------------------------------------------------
-    // 💡 IDEA
-    // --------------------------------------------------------
-
-    if (
-      data ===
-      "atlas_idea"
-    ) {
-
-      await createIdea(
-        env,
-        chatId
-      );
-
-      return;
-    }
-
-
-    // --------------------------------------------------------
     // 📊 STATUS
     // --------------------------------------------------------
 
@@ -295,42 +249,6 @@ export async function routeUpdate(
   ) {
 
     await sendStatus(
-      env,
-      chatId
-    );
-
-    return;
-  }
-
-
-  // ==========================================================
-  // 💡 IDEA
-  // ==========================================================
-
-  if (
-    text ===
-    "/idea"
-  ) {
-
-    await createIdea(
-      env,
-      chatId
-    );
-
-    return;
-  }
-
-
-  // ==========================================================
-  // 📝 POST
-  // ==========================================================
-
-  if (
-    text ===
-    "/post"
-  ) {
-
-    await createPost(
       env,
       chatId
     );
@@ -445,274 +363,14 @@ async function sendStatus(
     chatId,
 
     [
-      "🤖 ATLAS CONTENT FACTORY",
+      "🔌 ATLAS SMART CONNECT",
       "",
-      "🟢 Status: ONLINE",
-      "🧠 AI Engine: ACTIVE",
-      "🏭 Content Engine: ACTIVE",
-      "🛡️ Quality Engine: ACTIVE",
-      "📡 Telegram: CONNECTED"
+      "📡 Telegram bot: ACTIVE",
+      "🎮 Game access checks: AVAILABLE",
+      "🌐 Network status: CHECKABLE",
+      "",
+      "نکته: زمان پاسخ سرور اطلس، پینگ واقعی داخل بازی نیست."
     ].join("\n")
   );
-
-}
-
-
-// ============================================================
-// 💡 IDEA
-// ============================================================
-
-async function createIdea(
-  env,
-  chatId
-) {
-
-  await sendMessage(
-    env,
-    chatId,
-    "💡 در حال ساخت ایده..."
-  );
-
-
-  try {
-
-    const idea =
-      await generateIdea(
-        env
-      );
-
-
-    if (env.ATLAS_KV) {
-
-      await env.ATLAS_KV.put(
-
-        getIdeaKey(
-          chatId
-        ),
-
-        JSON.stringify({
-
-          idea,
-
-          createdAt:
-            Date.now()
-
-        }),
-
-        {
-          expirationTtl:
-            86400
-        }
-
-      );
-
-    }
-
-
-    await sendMessage(
-      env,
-      chatId,
-
-      [
-        "💡 ATLAS IDEA",
-        "",
-        `🇬🇧 Hook: ${idea.hook_en || ""}`,
-        "",
-        `🇮🇷 هوک: ${idea.hook_fa || ""}`,
-        "",
-        `🎬 Concept: ${idea.concept || ""}`,
-        "",
-        `🎨 Visual: ${idea.visual || ""}`,
-        "",
-        `📝 CTA: ${idea.cta || ""}`,
-        "",
-
-      ].join("\n")
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      "IDEA_ERROR:",
-      error?.stack || error
-    );
-
-
-    await sendMessage(
-      env,
-      chatId,
-
-      [
-        "⚠️ ساخت ایده با مشکل مواجه شد.",
-        "",
-        `🔧 ${error?.message || error}`
-      ].join("\n")
-    );
-
-  }
-
-}
-
-
-// ============================================================
-// 📝 POST
-// ============================================================
-
-async function createPost(
-  env,
-  chatId
-) {
-
-  await sendMessage(
-    env,
-    chatId,
-    "📝 در حال ساخت پست..."
-  );
-
-
-  try {
-
-    let sourceIdea =
-      "";
-
-
-    if (env.ATLAS_KV) {
-
-      const stored =
-        await env.ATLAS_KV.get(
-          getIdeaKey(chatId),
-          "json"
-        );
-
-
-      if (stored?.idea) {
-
-        sourceIdea =
-          JSON.stringify(
-            stored.idea
-          );
-
-      }
-
-    }
-
-
-    if (!sourceIdea) {
-
-      await sendMessage(
-        env,
-        chatId,
-
-        [
-          "💡 هنوز ایده‌ای وجود ندارد.",
-          "",
-          "ابتدا /idea را بزن."
-        ].join("\n")
-      );
-
-      return;
-    }
-
-
-    let post =
-      await generatePost(
-        env,
-        sourceIdea
-      );
-
-
-    let quality =
-      await checkContent(
-        env,
-        post
-      );
-
-
-    if (!quality.approved) {
-
-      const retryInput = [
-
-        sourceIdea,
-
-        "",
-
-        "QUALITY ISSUES:",
-
-        JSON.stringify(
-          quality.issues || []
-        ),
-
-        "",
-
-        "SUGGESTED FIXES:",
-
-        JSON.stringify(
-          quality.fixes || []
-        )
-
-      ].join("\n");
-
-
-      post =
-        await generatePost(
-          env,
-          retryInput
-        );
-
-
-      quality =
-        await checkContent(
-          env,
-          post
-        );
-
-    }
-
-
-    if (!quality.approved) {
-
-      await sendMessage(
-        env,
-        chatId,
-
-        [
-          "⚠️ کیفیت خروجی کافی نبود.",
-          "",
-          "دوباره /post را امتحان کن."
-        ].join("\n")
-      );
-
-      return;
-    }
-
-
-    await sendMessage(
-      env,
-      chatId,
-      post
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      "POST_ERROR:",
-      error?.stack || error
-    );
-
-
-    await sendMessage(
-      env,
-      chatId,
-
-      [
-        "⚠️ ساخت پست با مشکل مواجه شد.",
-        "",
-        `🔧 ${error?.message || error}`
-      ].join("\n")
-    );
-
-  }
 
 }
